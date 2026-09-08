@@ -1,0 +1,14 @@
+node_modules
+dist
+.turbo
+.vite
+.output
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+coverage
+.tanstack
+.nitro
+.output
+.vinxi

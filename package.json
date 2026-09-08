@@ -1,0 +1,20 @@
+{
+  "name": "tender-finder",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "prepare": "effect-language-service patch",
+    "dev": "bun --filter @tender-finder/web dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b && tsc --noEmit -p apps/web"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.87.2",
+    "@effect/vitest": "4.0.0-rc.112",
+    "effect-solutions": "latest",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

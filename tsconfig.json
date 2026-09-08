@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Effect-TS/language-service/refs/heads/main/schema.json",
+  "files": [],
+  "references": [
+    { "path": "./packages/domain" },
+    { "path": "./packages/api" }
+  ],
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "@effect/language-service"
+      }
+    ]
+  }
+}

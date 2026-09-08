@@ -1,0 +1,23 @@
+{
+  "name": "@tender-finder/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./integrations": "./src/integrations/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@browserbasehq/sdk": "^2.19.1",
+    "@browserbasehq/stagehand": "^4.0.2",
+    "@openrouter/sdk": "^1.2.110",
+    "@tender-finder/domain": "workspace:*",
+    "effect": "4.0.0-rc.112",
+    "zod": "4.4.3"
+  }
+}
