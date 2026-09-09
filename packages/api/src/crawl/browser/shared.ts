@@ -2,9 +2,19 @@ import { Cause, Effect, Schema } from "effect"
 import type { Page } from "playwright-core"
 
 export const observeSummaryLimit = 8000
+export const harvestSnapshotLimit = 16_000
+export const harvestScriptTimeoutMs = 45_000
 export const idleWaitMs = 8000
 export const actTimeoutMs = 30_000
 export const sessionOpTimeoutMs = 20_000
+
+export const clipText = (value: string, limit: number) => {
+  if (value.length <= limit) {
+    return value
+  }
+  const side = Math.max(1, Math.floor(limit / 2) - 2)
+  return `${value.slice(0, side)}\n…\n${value.slice(-side)}`
+}
 
 export class CrawlSessionError extends Schema.TaggedError<CrawlSessionError>()("CrawlSessionError", {
   message: Schema.String,

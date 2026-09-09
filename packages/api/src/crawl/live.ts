@@ -27,7 +27,7 @@ const crawlBrowser = CrawlBrowser.layer.pipe(
   Layer.provide(hostedBrowser),
   Layer.provide(groundingModel),
 )
-const harvestAgent = HarvestAgent.layer.pipe(Layer.provide(agentModel))
+const harvestAgent = HarvestAgent.layer.pipe(Layer.provide(groundingModel))
 const scoutAgent = ScoutAgent.layer.pipe(
   Layer.provide(harvestAgent),
   Layer.provide(agentModel),

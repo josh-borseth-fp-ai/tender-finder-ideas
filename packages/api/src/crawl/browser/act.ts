@@ -18,6 +18,34 @@ export class BrowserAction extends Schema.Class<BrowserAction>("BrowserAction")(
   value: Schema.optionalKey(Schema.String),
 }) {}
 
+export interface GroundedBrowserAction {
+  readonly action: BrowserAction
+  readonly reasoningText?: string
+}
+
+export const describeBrowserAction = (action: BrowserAction) => {
+  const parts: Array<string> = [action.kind]
+  if (action.selector !== undefined) {
+    parts.push(`selector=${action.selector}`)
+  }
+  if (action.role !== undefined) {
+    parts.push(`role=${action.role}`)
+  }
+  if (action.name !== undefined) {
+    parts.push(`name=${action.name}`)
+  }
+  if (action.text !== undefined) {
+    parts.push(`text=${action.text}`)
+  }
+  if (action.key !== undefined) {
+    parts.push(`key=${action.key}`)
+  }
+  if (action.value !== undefined) {
+    parts.push(`value=${action.value}`)
+  }
+  return parts.join(" ")
+}
+
 export interface ActLocator {
   readonly click: (options?: { timeout?: number }) => Promise<unknown>
   readonly fill: (text: string, options?: { timeout?: number }) => Promise<unknown>
@@ -165,5 +193,9 @@ export const groundBrowserAction = Effect.fn("groundBrowserAction")(function*(in
         }),
     ),
   )
-  return yield* validateBrowserAction(response.value)
+  const action = yield* validateBrowserAction(response.value)
+  return {
+    action,
+    ...(response.reasoningText !== undefined ? { reasoningText: response.reasoningText } : {}),
+  }
 })

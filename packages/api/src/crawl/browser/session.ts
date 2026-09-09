@@ -1,11 +1,19 @@
-import { type Solicitation, type SourceUrl } from "@tender-finder/domain"
+import { type SourceUrl } from "@tender-finder/domain"
 import { Cause, Context, Effect, Layer } from "effect"
 import { LanguageModel } from "effect/unstable/ai"
 import {
   asActPage,
   executeBrowserAction,
   groundBrowserAction,
+  type GroundedBrowserAction,
 } from "./act.ts"
+import {
+  captureJsonInitScript,
+  drainJsonCapturesSource,
+  peekJsonCapturesSource,
+  type JsonCapture,
+} from "./captures.ts"
+import { runPlaywrightFunction } from "./playwright-script.ts"
 import {
   debugFromObservation,
   emptyCrawlDebug,
@@ -15,38 +23,37 @@ import {
 } from "../debug.ts"
 import { HostedBrowserOpenError } from "../../integrations/errors.ts"
 import { HostedBrowser } from "../../integrations/hosted-browser.ts"
-import { createIndexSession } from "./index-session.ts"
 import {
   actTimeoutMs,
+  clipText,
   CrawlSessionError,
+  harvestScriptTimeoutMs,
+  harvestSnapshotLimit,
+  observeSummaryLimit,
   type PageObservation,
   pageUrl,
   runScript,
   settleNetwork,
   timedSession,
   toSessionError,
-  truncateSummary,
 } from "./shared.ts"
 
 export {
   CrawlSessionError,
   type PageObservation,
 } from "./shared.ts"
+export type { JsonCapture } from "./captures.ts"
 
 export interface CrawlSession {
   readonly sessionId: string
   readonly liveViewUrl: string
   readonly goto: (url: SourceUrl) => Effect.Effect<void, CrawlSessionError>
   readonly currentUrl: () => Effect.Effect<string, CrawlSessionError>
-  readonly act: (instruction: string) => Effect.Effect<void, CrawlSessionError>
+  readonly act: (instruction: string) => Effect.Effect<GroundedBrowserAction, CrawlSessionError>
   readonly observe: (instruction: string) => Effect.Effect<PageObservation, CrawlSessionError>
-  readonly snapshotDom: () => Effect.Effect<PageObservation, CrawlSessionError>
-  readonly prepareHarvest: () => Effect.Effect<string, CrawlSessionError>
-  readonly extractVisibleListings: () => Effect.Effect<
-    ReadonlyArray<Solicitation>,
-    CrawlSessionError
-  >
-  readonly paginateIndex: () => Effect.Effect<boolean, CrawlSessionError>
+  readonly peekJsonCaptures: () => Effect.Effect<ReadonlyArray<JsonCapture>, CrawlSessionError>
+  readonly drainJsonCaptures: () => Effect.Effect<void, CrawlSessionError>
+  readonly runHarvestScript: (source: string) => Effect.Effect<unknown, CrawlSessionError>
   readonly debugSnapshot: () => CrawlDebug
   readonly close: () => Effect.Effect<void>
 }
@@ -71,7 +78,7 @@ export class CrawlBrowser extends Context.Service<
           debug = mergeCrawlDebug(debug, patch)
         }
 
-        const snapshotDom = Effect.fn("CrawlBrowser.snapshotDom")(function*() {
+        const captureDom = Effect.fn("CrawlBrowser.captureDom")(function*(limit = harvestSnapshotLimit) {
           const observation = yield* timedSession(async () => {
             const page = await handle.activePage()
             const url = pageUrl(page)
@@ -86,7 +93,11 @@ export class CrawlBrowser extends Context.Service<
               )
             }
             const body = [title, tree].filter((part) => part.trim().length > 0).join("\n")
-            return { url, summary: truncateSummary(body.length === 0 ? url : `${url}\n${body}`) }
+            const summary = body.length === 0 ? url : `${url}\n${body}`
+            return {
+              url,
+              summary: clipText(summary, limit),
+            }
           }, "Timed out reading the page.")
           patchDebug({
             currentUrl: observation.url,
@@ -95,14 +106,10 @@ export class CrawlBrowser extends Context.Service<
           return observation
         })
 
-        const indexSession = createIndexSession({
-          handle,
-          model,
-          snapshotDom,
-          patchDebug,
-        })
-
-        yield* indexSession.installJsonCapture()
+        yield* Effect.tryPromise({
+          try: () => handle.context.addInitScript(captureJsonInitScript),
+          catch: toSessionError,
+        }).pipe(Effect.catchTag("CrawlSessionError", () => Effect.void))
 
         const goto = Effect.fn("CrawlBrowser.goto")(function*(url: SourceUrl) {
           yield* Effect.tryPromise({
@@ -126,7 +133,7 @@ export class CrawlBrowser extends Context.Service<
         })
 
         const act = Effect.fn("CrawlBrowser.act")(function*(instruction: string) {
-          const observation = yield* snapshotDom()
+          const observation = yield* captureDom(observeSummaryLimit)
           const action = yield* groundBrowserAction({
             instruction,
             snapshot: observation.summary,
@@ -137,7 +144,7 @@ export class CrawlBrowser extends Context.Service<
           yield* Effect.tryPromise({
             try: async () => {
               const page = await handle.activePage()
-              await executeBrowserAction(asActPage(page), action, actTimeoutMs)
+              await executeBrowserAction(asActPage(page), action.action, actTimeoutMs)
             },
             catch: toSessionError,
           }).pipe(
@@ -150,10 +157,35 @@ export class CrawlBrowser extends Context.Service<
                 }),
             ),
           )
+          return action
         })
 
         const observe = Effect.fn("CrawlBrowser.observe")(function*(_instruction: string) {
-          return yield* snapshotDom()
+          return yield* captureDom()
+        })
+
+        const peekJsonCaptures = Effect.fn("CrawlBrowser.peekJsonCaptures")(function*() {
+          return yield* timedSession(async () => {
+            const page = await handle.activePage()
+            await settleNetwork(page)
+            const items = await runScript<Array<JsonCapture>>(page, peekJsonCapturesSource)
+            return Array.isArray(items) ? items : []
+          }, "Timed out reading listing data from the page.")
+        })
+
+        const drainJsonCaptures = Effect.fn("CrawlBrowser.drainJsonCaptures")(function*() {
+          yield* timedSession(async () => {
+            const page = await handle.activePage()
+            await runScript(page, drainJsonCapturesSource)
+          }, "Timed out clearing listing data from the page.")
+        })
+
+        const runHarvestScript = Effect.fn("CrawlBrowser.runHarvestScript")(function*(source: string) {
+          return yield* timedSession(async () => {
+            const page = await handle.activePage()
+            await settleNetwork(page)
+            return await runPlaywrightFunction(page, source)
+          }, "Timed out running the Playwright harvest script.", harvestScriptTimeoutMs)
         })
 
         return {
@@ -163,10 +195,9 @@ export class CrawlBrowser extends Context.Service<
           currentUrl,
           act,
           observe,
-          snapshotDom,
-          prepareHarvest: indexSession.prepareHarvest,
-          extractVisibleListings: indexSession.extractVisibleListings,
-          paginateIndex: indexSession.paginateIndex,
+          peekJsonCaptures,
+          drainJsonCaptures,
+          runHarvestScript,
           debugSnapshot: () => debug,
           close: handle.close,
         } satisfies CrawlSession

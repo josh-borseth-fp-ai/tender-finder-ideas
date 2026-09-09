@@ -1,0 +1,3 @@
+# Harvest runs an LLM Playwright script and repairs it
+
+Scout finds solicitation indexes. Harvest asks the model to write Playwright `page` functions for extract and next-page in one non-reasoning call from a compact index sample (a few listing rows, pagination, and JSON shapes), then runs those functions until this query's pages end. When a script throws, Harvest repairs it. Harvest does not change page size or filters; those are Scout's job via act, then another harvest. Advertised totals are hints for the model, not a stop rule in TypeScript, and not a reason for harvest to keep going. After harvest returns, Scout looks for another solicitation index and harvests again, keeping already-recorded notices. Dedup, URL resolve, caps, and schema checks stay in code.

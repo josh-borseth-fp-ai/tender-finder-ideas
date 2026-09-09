@@ -9,7 +9,7 @@ import {
 import {
   CrawlDebug,
   Crawls,
-  ListingRecipe,
+  HarvestScriptDebug,
   PageObservationDebug,
   ToolFailureDebug,
 } from "@tender-finder/api/crawls"
@@ -197,7 +197,7 @@ describe("runDebugCrawl", () => {
       expect(report.crawl?.solicitations).toHaveLength(1)
     }))
 
-  it.effect("includes observe, recipe, harvest, and tool failures in debug", () => {
+  it.effect("includes observe, harvest script, harvest, and tool failures in debug", () => {
     const observation = {
       url: "https://example.gov/bids",
       summary: "Table of open notices including Road resurfacing.",
@@ -206,11 +206,9 @@ describe("runDebugCrawl", () => {
       toolFailures: [],
       currentUrl: observation.url,
       lastObservation: new PageObservationDebug(observation),
-      listingRecipe: new ListingRecipe({
-        kind: "json",
-        itemsPath: ["data", "results"],
-        title: "title",
-        paginationKind: "none",
+      harvestScript: new HarvestScriptDebug({
+        extractSource: "async (page) => ({ solicitations: [], hasNext: false })",
+        paginateSource: "async (page) => ({ moved: false })",
       }),
     })
     return Effect.gen(function*() {
@@ -222,7 +220,7 @@ describe("runDebugCrawl", () => {
               message: "Read https://example.gov/bids",
             }))
             yield* host.reportDebug({
-              harvest: { recorded: 1, pages: 1, reachedEnd: true, capped: false },
+              harvest: { recorded: 1, pages: 1, reachedEnd: true, capped: false, retries: 0 },
               toolFailures: [new ToolFailureDebug({
                 tool: "act",
                 message: "Modal did not close.",
@@ -235,17 +233,18 @@ describe("runDebugCrawl", () => {
         debugSnapshot: () => snapshot,
       })
       expect(report.debug?.lastObservation?.summary).toContain("Road resurfacing")
-      expect(report.debug?.listingRecipe?.itemsPath).toEqual(["data", "results"])
+      expect(report.debug?.harvestScript?.extractSource).toContain("solicitations")
       expect(report.debug?.harvest?.recorded).toBe(1)
       expect(report.debug?.harvest?.pages).toBe(1)
       expect(report.debug?.harvest?.reachedEnd).toBe(true)
       expect(report.debug?.harvest?.capped).toBe(false)
+      expect(report.debug?.harvest?.retries).toBe(0)
       expect(report.debug?.toolFailures[0]?.tool).toBe("act")
       expect(report.debug?.toolFailures[0]?.message).toBe("Modal did not close.")
       const parsed = JSON.parse(encodeReport(report, false)) as {
-        debug: { listingRecipe: { kind: string }; harvest: { recorded: number } }
+        debug: { harvestScript: { extractSource: string }; harvest: { recorded: number } }
       }
-      expect(parsed.debug.listingRecipe.kind).toBe("json")
+      expect(parsed.debug.harvestScript.extractSource).toContain("solicitations")
       expect(parsed.debug.harvest.recorded).toBe(1)
     })
   })

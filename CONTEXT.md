@@ -29,9 +29,13 @@ The Browserbase window for the hosted browser of a Crawl. A person watches it wh
 _Avoid_: debugger, iframe, session viewer
 
 **Scout**:
-The phase of a Crawl that navigates from the Source URL to a solicitation index — opening pages, dismissing overlays, and handling access walls.
+The phase of a Crawl that finds solicitation indexes — opening pages, dismissing overlays, handling access walls, and returning after each harvest to look for another index.
 _Avoid_: crawl agent, outer agent, navigator
 
 **Harvest**:
-The phase of a Crawl that learns how a solicitation index is structured and records every currently open notice from it, including later pages.
+The phase of a Crawl that records currently open Solicitations from the current solicitation index, including later pages.
 _Avoid_: scrape, extract, listing loop
+
+**Working record**:
+The ordered notes of a Crawl: what the model thought, said, and did in the hosted browser.
+_Avoid_: log, transcript, debug feed, activity feed

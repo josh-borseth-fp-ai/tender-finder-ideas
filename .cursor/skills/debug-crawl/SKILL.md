@@ -33,25 +33,25 @@ Parse stdout as JSON. Fields:
 - `ok` — `true` only when `exitReason` is `completed`
 - `exitReason` — `completed` | `failed` | `blocked` | `timeout` | `empty` | `invalidUrl` | `config`
 - `error` — failure or access-wall reason
-- `crawl.activity` — ordered steps (`goto`, `act`, `observe`, `record`, `human`, harvest recipe notes)
+- `crawl.activity` — ordered steps (`goto`, `act`, `observe`, `record`, `human`)
 - `crawl.solicitations` — collected notices
 - `counts` — solicitation and activity totals
 - `debug` — evidence for fixing harvest/agent code:
-  - `lastObservation.url` / `lastObservation.summary` — last page snapshot (accessibility tree / text)
-  - `listingRecipe` — learned JSON or DOM listing map (`itemsPath`, `rowSelector`, pagination)
-  - `indexSample` — index URL, accessibility tree, and truncated JSON capture previews
-  - `harvest` — `{ recorded, pages, reachedEnd, capped }`
+  - `lastObservation.url` / `lastObservation.summary` — last page snapshot
+  - `harvest` — `{ recorded, pages, reachedEnd, capped, retries }`
+  - `harvestScript` — last Playwright extract/paginate sources
+  - `lastScriptError` — last Playwright script failure
   - `toolFailures` — `{ tool, message }` from goto/act/observe/harvestIndex
   - `currentUrl` / `sessionId`
 
-When harvest collected nothing, compare `listingRecipe` to `indexSample.captures` and `lastObservation.summary`. When the scout never reached an index, read `lastObservation` and `activity`.
+When harvest collected nothing, compare `harvestScript`, `lastScriptError`, and `lastObservation.summary`. When the scout never reached an index, read `lastObservation` and `activity`.
 
 Exit codes: `0` completed, `1` failed/empty/config/invalid, `2` blocked, `3` timeout.
 
 ## Fix loop
 
 1. Run the CLI against the Source URL that failed.
-2. Use `debug` first (`lastObservation`, `listingRecipe`, `indexSample`, `harvest`, `toolFailures`), then `exitReason` and `activity`.
+2. Use `debug` first (`lastObservation`, `harvest`, `harvestScript`, `lastScriptError`, `toolFailures`), then `exitReason` and `activity`.
 3. Patch `crawl/harvest/`, `crawl/scout/`, or `crawl/browser/` code. Do not paper over a failed crawl in the CLI.
 4. Re-run the same command. Repeat until `ok` is true and `counts.solicitations` meets the minimum.
 5. If `blocked`, the site needs a person. Stop unless the user is present; then use `--wait-for-human`.

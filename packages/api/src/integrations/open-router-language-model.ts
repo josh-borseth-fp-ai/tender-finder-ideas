@@ -14,20 +14,35 @@ export const OpenRouterClientLive = Layer.effect(
   }),
 ).pipe(Layer.provide(FetchHttpClient.layer))
 
-const languageModelLayer = (agent: boolean) =>
+export type OpenRouterReasoningConfig = {
+  readonly effort: "low"
+  readonly summary: "auto"
+}
+
+/** OpenRouter reasoning preset for Scout/Harvest agent inference. */
+export const OpenRouterAgentReasoning: OpenRouterReasoningConfig = {
+  effort: "low",
+  summary: "auto",
+}
+
+export type OpenRouterLanguageModelOptions = {
+  /** When set, enables OpenRouter's reasoning mode with this config. */
+  readonly reasoning?: OpenRouterReasoningConfig
+}
+
+export const openRouterLanguageModelLayer = (
+  options: OpenRouterLanguageModelOptions = {},
+) =>
   Layer.effect(
     LanguageModel.LanguageModel,
     Effect.gen(function*() {
       const config = yield* IntegrationConfig
       return yield* OpenRouterLanguageModel.make({
         model: config.openRouterModel,
-        ...(agent
+        ...(options.reasoning !== undefined
           ? {
             config: {
-              reasoning: {
-                effort: "low" as const,
-                summary: "auto" as const,
-              },
+              reasoning: options.reasoning,
             },
           }
           : {}),
@@ -35,5 +50,9 @@ const languageModelLayer = (agent: boolean) =>
     }),
   ).pipe(Layer.provide(OpenRouterClientLive))
 
-export const OpenRouterGroundingLanguageModelLive = languageModelLayer(false)
-export const OpenRouterAgentLanguageModelLive = languageModelLayer(true)
+export const OpenRouterGroundingLanguageModelLive = openRouterLanguageModelLayer({
+  reasoning: OpenRouterAgentReasoning,
+})
+export const OpenRouterAgentLanguageModelLive = openRouterLanguageModelLayer({
+  reasoning: OpenRouterAgentReasoning,
+})

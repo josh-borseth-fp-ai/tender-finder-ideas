@@ -1,12 +1,10 @@
 import { Schema } from "effect"
-import { ListingRecipe, type HarvestResult, type IndexSample, type JsonCapture } from "./harvest/index.ts"
+import type { JsonCapture } from "./browser/captures.ts"
+import { clipText } from "./browser/shared.ts"
 
 const previewLimit = 4_000
 const treeLimit = 8_000
 const maxCaptures = 4
-
-const truncate = (value: string, limit: number) =>
-  value.length <= limit ? value : `${value.slice(0, limit)}…`
 
 const previewJson = (value: unknown) => {
   try {
@@ -14,7 +12,7 @@ const previewJson = (value: unknown) => {
     if (raw === undefined) {
       return "undefined"
     }
-    return truncate(raw, previewLimit)
+    return clipText(raw, previewLimit)
   } catch {
     return "[unserializable]"
   }
@@ -30,6 +28,12 @@ export class HarvestDebug extends Schema.Class<HarvestDebug>("HarvestDebug")({
   pages: Schema.Number,
   reachedEnd: Schema.Boolean,
   capped: Schema.Boolean,
+  retries: Schema.Number,
+}) {}
+
+export class HarvestScriptDebug extends Schema.Class<HarvestScriptDebug>("HarvestScriptDebug")({
+  extractSource: Schema.String,
+  paginateSource: Schema.String,
 }) {}
 
 export class JsonCaptureDebug extends Schema.Class<JsonCaptureDebug>("JsonCaptureDebug")({
@@ -53,8 +57,9 @@ export class CrawlDebug extends Schema.Class<CrawlDebug>("CrawlDebug")({
   sessionId: Schema.optionalKey(Schema.String),
   currentUrl: Schema.optionalKey(Schema.String),
   lastObservation: Schema.optionalKey(PageObservationDebug),
-  listingRecipe: Schema.optionalKey(ListingRecipe),
   harvest: Schema.optionalKey(HarvestDebug),
+  harvestScript: Schema.optionalKey(HarvestScriptDebug),
+  lastScriptError: Schema.optionalKey(Schema.String),
   indexSample: Schema.optionalKey(IndexSampleDebug),
   toolFailures: Schema.Array(ToolFailureDebug),
 }) {}
@@ -68,8 +73,18 @@ export type CrawlDebugPatch = {
   readonly sessionId?: string
   readonly currentUrl?: string
   readonly lastObservation?: PageObservationDebug
-  readonly listingRecipe?: ListingRecipe
-  readonly harvest?: HarvestDebug | HarvestResult
+  readonly harvest?: HarvestDebug | {
+    readonly recorded: number
+    readonly pages: number
+    readonly reachedEnd: boolean
+    readonly capped: boolean
+    readonly retries: number
+  }
+  readonly harvestScript?: HarvestScriptDebug | {
+    readonly extractSource: string
+    readonly paginateSource: string
+  }
+  readonly lastScriptError?: string
   readonly indexSample?: IndexSampleDebug
   readonly toolFailures?: ReadonlyArray<ToolFailureDebug>
 }
@@ -81,7 +96,6 @@ export const mergeCrawlDebug = (current: CrawlDebug, patch: CrawlDebugPatch) => 
   const sessionId = optional(current.sessionId, patch.sessionId)
   const currentUrl = optional(current.currentUrl, patch.currentUrl)
   const lastObservation = optional(current.lastObservation, patch.lastObservation)
-  const listingRecipe = optional(current.listingRecipe, patch.listingRecipe)
   const harvestPatch = patch.harvest === undefined
     ? undefined
     : new HarvestDebug({
@@ -89,16 +103,32 @@ export const mergeCrawlDebug = (current: CrawlDebug, patch: CrawlDebugPatch) => 
       pages: patch.harvest.pages,
       reachedEnd: patch.harvest.reachedEnd,
       capped: patch.harvest.capped,
+      retries: patch.harvest.retries,
     })
-  const harvest = optional(current.harvest, harvestPatch)
+  const keepHarvest = harvestPatch !== undefined
+    && current.harvest !== undefined
+    && harvestPatch.recorded === 0
+    && current.harvest.recorded > 0
+  const harvest = keepHarvest
+    ? { value: current.harvest }
+    : optional(current.harvest, harvestPatch)
+  const harvestScriptPatch = patch.harvestScript === undefined
+    ? undefined
+    : new HarvestScriptDebug({
+      extractSource: patch.harvestScript.extractSource,
+      paginateSource: patch.harvestScript.paginateSource,
+    })
+  const harvestScript = optional(current.harvestScript, harvestScriptPatch)
+  const lastScriptError = optional(current.lastScriptError, patch.lastScriptError)
   const indexSample = optional(current.indexSample, patch.indexSample)
   return new CrawlDebug({
     toolFailures: [...current.toolFailures, ...(patch.toolFailures ?? [])],
     ...(sessionId !== undefined ? { sessionId: sessionId.value } : {}),
     ...(currentUrl !== undefined ? { currentUrl: currentUrl.value } : {}),
     ...(lastObservation !== undefined ? { lastObservation: lastObservation.value } : {}),
-    ...(listingRecipe !== undefined ? { listingRecipe: listingRecipe.value } : {}),
     ...(harvest !== undefined ? { harvest: harvest.value } : {}),
+    ...(harvestScript !== undefined ? { harvestScript: harvestScript.value } : {}),
+    ...(lastScriptError !== undefined ? { lastScriptError: lastScriptError.value } : {}),
     ...(indexSample !== undefined ? { indexSample: indexSample.value } : {}),
   })
 }
@@ -109,10 +139,14 @@ export const debugFromCapture = (capture: JsonCapture) =>
     bodyPreview: previewJson(capture.body),
   })
 
-export const debugFromIndexSample = (sample: IndexSample) =>
+export const debugFromIndexSample = (sample: {
+  readonly url: string
+  readonly accessibilityTree: string
+  readonly captures: ReadonlyArray<JsonCapture>
+}) =>
   new IndexSampleDebug({
     url: sample.url,
-    accessibilityTree: truncate(sample.accessibilityTree, treeLimit),
+    accessibilityTree: clipText(sample.accessibilityTree, treeLimit),
     captureCount: sample.captures.length,
     captures: sample.captures.slice(0, maxCaptures).map(debugFromCapture),
   })
@@ -120,5 +154,5 @@ export const debugFromIndexSample = (sample: IndexSample) =>
 export const debugFromObservation = (observation: { readonly url: string; readonly summary: string }) =>
   new PageObservationDebug({
     url: observation.url,
-    summary: truncate(observation.summary, treeLimit),
+    summary: clipText(observation.summary, treeLimit),
   })

@@ -1,22 +1,4 @@
 import { Solicitation } from "@tender-finder/domain"
-import { isClosedStatus, isForbiddenPathSegment, type ListingRecipe } from "./listing-recipe.ts"
-import { resolveListingUrl } from "./pagination.ts"
-
-export interface ListingDraft {
-  readonly title: string
-  readonly url?: string
-  readonly agency?: string
-  readonly dueDate?: string
-  readonly solicitationNumber?: string
-  readonly summary?: string
-  readonly description?: string
-  readonly status?: string
-}
-
-export interface JsonCapture {
-  readonly url: string
-  readonly body: unknown
-}
 
 const trimmed = (value: string | undefined): string | undefined => {
   if (value === undefined) {
@@ -31,7 +13,28 @@ export const solicitationKey = (item: Solicitation) => `${item.title}\0${item.ur
 export const listingIdentity = (items: ReadonlyArray<Solicitation>) =>
   items.map(solicitationKey).join("\n")
 
-const stringField = (value: unknown): string | undefined => {
+export const resolveListingUrl = (href: string, pageUrl: string): string | undefined => {
+  const value = href.trim()
+  if (value.length === 0) {
+    return undefined
+  }
+  const lower = value.toLowerCase()
+  if (lower.startsWith("javascript:") || value.startsWith("#")) {
+    return undefined
+  }
+  try {
+    return new URL(value, pageUrl).href
+  } catch {
+    return undefined
+  }
+}
+
+const optionalField = (value: string | undefined) => {
+  const next = trimmed(value)
+  return next === undefined ? {} : { value: next }
+}
+
+const stringish = (value: unknown): string | undefined => {
   if (typeof value === "string") {
     return trimmed(value)
   }
@@ -41,143 +44,75 @@ const stringField = (value: unknown): string | undefined => {
   return undefined
 }
 
-export const getAtPath = (value: unknown, path: ReadonlyArray<string>): unknown => {
-  let current = value
-  for (const segment of path) {
-    if (segment.length === 0 || isForbiddenPathSegment(segment)) {
-      return undefined
-    }
-    if (current === null || current === undefined || typeof current !== "object") {
-      return undefined
-    }
-    if (Array.isArray(current)) {
-      if (!/^\d+$/.test(segment)) {
-        return undefined
-      }
-      current = current[Number(segment)]
-      continue
-    }
-    current = (current as Record<string, unknown>)[segment]
-  }
-  return current
-}
-
-const fieldPath = (field: string) => field.split(".").filter((segment) => segment.length > 0)
-
-const stringAt = (value: unknown, field: string | undefined): string | undefined => {
-  if (field === undefined || field.trim().length === 0) {
-    return undefined
-  }
-  return stringField(getAtPath(value, fieldPath(field)))
-}
-
-const draftFromRecord = (value: unknown, recipe: ListingRecipe): ListingDraft | undefined => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return undefined
-  }
-  const title = stringAt(value, recipe.title)
-  if (title === undefined) {
-    return undefined
-  }
-  const status = stringAt(value, recipe.status)
-  if (isClosedStatus(status, recipe.closedStatusPattern)) {
-    return undefined
-  }
-  const url = stringAt(value, recipe.url)
-  const agency = stringAt(value, recipe.agency)
-  const dueDate = stringAt(value, recipe.dueDate)
-  const solicitationNumber = stringAt(value, recipe.solicitationNumber)
-  const summary = stringAt(value, recipe.summary)
-  const description = stringAt(value, recipe.description)
-  return {
-    title,
-    ...(url !== undefined ? { url } : {}),
-    ...(agency !== undefined ? { agency } : {}),
-    ...(dueDate !== undefined ? { dueDate } : {}),
-    ...(solicitationNumber !== undefined ? { solicitationNumber } : {}),
-    ...(summary !== undefined ? { summary } : {}),
-    ...(description !== undefined ? { description } : {}),
-    ...(status !== undefined ? { status } : {}),
-  }
-}
-
-const solicitationFromDraft = (draft: ListingDraft, pageUrl?: string): Solicitation | undefined => {
-  const title = trimmed(draft.title)
-  if (title === undefined) {
-    return undefined
-  }
-  const url = draft.url === undefined
-    ? undefined
-    : pageUrl === undefined
-    ? trimmed(draft.url)
-    : resolveListingUrl(draft.url, pageUrl)
-  return new Solicitation({
-    title,
-    ...(url !== undefined ? { url } : {}),
-    ...(trimmed(draft.agency) !== undefined ? { agency: trimmed(draft.agency)! } : {}),
-    ...(trimmed(draft.dueDate) !== undefined ? { dueDate: trimmed(draft.dueDate)! } : {}),
-    ...(trimmed(draft.solicitationNumber) !== undefined
-      ? { solicitationNumber: trimmed(draft.solicitationNumber)! }
-      : {}),
-    ...(trimmed(draft.summary) !== undefined ? { summary: trimmed(draft.summary)! } : {}),
-    ...(trimmed(draft.description) !== undefined ? { description: trimmed(draft.description)! } : {}),
-  })
-}
-
-export const listingsFromDrafts = (
-  drafts: ReadonlyArray<ListingDraft>,
-  pageUrl?: string,
+export const listingsFromUnknown = (
+  items: ReadonlyArray<unknown>,
+  pageUrl: string,
 ): Array<Solicitation> => {
-  const items: Array<Solicitation> = []
+  const sanitized: Array<Solicitation> = []
   const seen = new Set<string>()
-  for (const draft of drafts) {
-    const item = solicitationFromDraft(draft, pageUrl)
-    if (item === undefined) {
+  for (const item of items) {
+    if (item === null || typeof item !== "object") {
       continue
     }
-    const key = solicitationKey(item)
+    const record = item as Record<string, unknown>
+    const title = stringish(record.title)
+    if (title === undefined) {
+      continue
+    }
+    const href = stringish(record.url)
+    const url = href === undefined ? undefined : resolveListingUrl(href, pageUrl)
+    const agency = optionalField(stringish(record.agency))
+    const dueDate = optionalField(stringish(record.dueDate))
+    const solicitationNumber = optionalField(stringish(record.solicitationNumber))
+    const summary = optionalField(stringish(record.summary))
+    const description = optionalField(stringish(record.description))
+    const next = new Solicitation({
+      title,
+      ...(url !== undefined ? { url } : {}),
+      ...(agency.value !== undefined ? { agency: agency.value } : {}),
+      ...(dueDate.value !== undefined ? { dueDate: dueDate.value } : {}),
+      ...(solicitationNumber.value !== undefined
+        ? { solicitationNumber: solicitationNumber.value }
+        : {}),
+      ...(summary.value !== undefined ? { summary: summary.value } : {}),
+      ...(description.value !== undefined ? { description: description.value } : {}),
+    })
+    const key = solicitationKey(next)
     if (seen.has(key)) {
       continue
     }
     seen.add(key)
-    items.push(item)
+    sanitized.push(next)
   }
-  return items
+  return sanitized
 }
 
-export const firstListingCapture = (
-  captures: ReadonlyArray<JsonCapture>,
-  recipe: ListingRecipe,
-  pageUrl?: string,
-): { readonly capture: JsonCapture; readonly items: Array<Solicitation> } | undefined => {
-  if (recipe.kind !== "json" || recipe.itemsPath === undefined) {
-    return undefined
-  }
-  const needle = recipe.captureUrlIncludes?.trim()
-  const search = needle === undefined || needle.length === 0
-    ? captures
-    : captures.filter((capture) => capture.url.includes(needle))
-  for (const capture of search) {
-    const at = getAtPath(capture.body, recipe.itemsPath)
-    if (!Array.isArray(at)) {
+export const sanitizeSolicitations = (
+  items: ReadonlyArray<Solicitation>,
+  pageUrl: string,
+): Array<Solicitation> => listingsFromUnknown(items, pageUrl)
+
+export const takeFresh = (
+  extracted: ReadonlyArray<Solicitation>,
+  seen: Set<string>,
+  maxItems: number,
+): Array<Solicitation> => {
+  const fresh: Array<Solicitation> = []
+  for (const item of extracted) {
+    const key = solicitationKey(item)
+    if (seen.has(key)) {
       continue
     }
-    const items = listingsFromDrafts(
-      at.flatMap((item) => {
-        const draft = draftFromRecord(item, recipe)
-        return draft === undefined ? [] : [draft]
-      }),
-      pageUrl,
-    )
-    if (items.length > 0) {
-      return { capture, items }
+    if (seen.size + fresh.length >= maxItems) {
+      break
     }
+    fresh.push(item)
   }
-  return undefined
+  return fresh
 }
 
-export const listingsFromCapturedJson = (
-  captures: ReadonlyArray<JsonCapture>,
-  recipe: ListingRecipe,
-  pageUrl?: string,
-): Array<Solicitation> => firstListingCapture(captures, recipe, pageUrl)?.items ?? []
+export const rememberSeen = (seen: Set<string>, items: ReadonlyArray<Solicitation>) => {
+  for (const item of items) {
+    seen.add(solicitationKey(item))
+  }
+}

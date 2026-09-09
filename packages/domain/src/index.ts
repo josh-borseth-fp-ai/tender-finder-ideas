@@ -4,6 +4,7 @@ export {
   Crawl,
   CrawlActivity,
   CrawlActivityKind,
+  CrawlActivityPhase,
   CrawlId,
   CrawlNotBlocked,
   CrawlNotFound,

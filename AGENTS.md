@@ -25,8 +25,8 @@ CLI: `effect-solutions show project-setup tsconfig services-and-layers`.
 - `packages/domain` — isomorphic schemas, brands, tagged errors
 - `packages/api` — `RpcGroup` (`.`), server handlers (`./server`), crawl pipeline (`./crawl`)
   - `crawl/scout/` — `ScoutAgent` (navigate to a solicitation index)
-  - `crawl/harvest/` — listing recipes, pagination, `HarvestAgent` (collect notices)
-  - `crawl/browser/` — hosted browser session and index-session methods
+  - `crawl/harvest/` — `HarvestAgent` (record notices from the current index, including later pages)
+  - `crawl/browser/` — hosted browser session, grounded act, JSON captures
 - `apps/cli` — crawl debug CLI
 - `apps/web` — TanStack Start, shadcn, Effect Atom (`@effect/atom-react`, not `@effect-atom/*`)
 

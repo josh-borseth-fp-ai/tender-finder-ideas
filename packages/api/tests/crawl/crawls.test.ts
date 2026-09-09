@@ -203,6 +203,35 @@ describe("Crawls", () => {
         }),
     }))))
 
+  it.effect("replaces a working-record entry when the id is reused", () =>
+    Effect.gen(function*() {
+      const crawls = yield* Crawls
+      const started = yield* crawls.start("https://example.gov/bids")
+      const completed = yield* waitForStatus(started.id, "completed")
+      const live = completed.activity.filter((entry) => entry.id === "live-1")
+      expect(live).toHaveLength(1)
+      expect(live[0]?.message).toBe("The bids should be on the source page.")
+      expect(live[0]?.streaming).toBeUndefined()
+    }).pipe(
+      Effect.provide(Crawls.testLayer({
+        run: (host) =>
+          Effect.gen(function*() {
+            yield* host.reportActivity(new CrawlActivity({
+              id: "live-1",
+              kind: "reasoning",
+              message: "Th",
+              streaming: true,
+            }))
+            yield* host.reportActivity(new CrawlActivity({
+              id: "live-1",
+              kind: "reasoning",
+              message: "The bids should be on the source page.",
+            }))
+            yield* host.complete()
+          }),
+      })),
+    ))
+
   it.effect("cancel interrupts a blocked crawl and closes the session", () => {
     const closed = { current: false }
     return Effect.gen(function*() {

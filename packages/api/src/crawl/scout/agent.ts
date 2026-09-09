@@ -12,9 +12,10 @@ import {
   makeActTool,
   makeFailTool,
   makeReport,
-  makeReportTurn,
   ObserveTool,
+  runStreamTurn,
 } from "../agent-kit.ts"
+import { describeBrowserAction } from "../browser/act.ts"
 import { type CrawlSession } from "../browser/session.ts"
 import { type CrawlDebugPatch, debugFromObservation } from "../debug.ts"
 import { HarvestAgent } from "../harvest/agent.ts"
@@ -24,15 +25,16 @@ export const scoutAgentMaxTurns = 40
 const systemPrompt = [
   "You scout government procurement sites so a harvest can collect currently open solicitations, RFPs, tenders, or bids.",
   "Start by calling goto with the source URL. Use observe to see the page.",
-  "Use act only for navigation that is not paging through a listing: dismiss a cookie or consent banner, close a modal, open a bids section, submit a search, or change a filter.",
+  "Use act only for navigation that is not paging through a listing: dismiss a cookie or consent banner, close a modal, open a bids section, submit a search, change page size, or change a filter.",
   "If a cookie, privacy, or overlay is covering the page, dismiss it before clicking anything else.",
-  "When you are on a solicitation index (a table or list of currently open notices), call harvestIndex. Harvest learns the listing map once, then collects later pages. Do not transcribe listings yourself.",
+  "When you are on a solicitation index (a table or list of currently open notices) that you have not harvested, call harvestIndex. Harvest records visible notices and pages through that index.",
   "If harvestIndex fails, do not retry it with empty or dummy parameters. Observe again, open a different index, or finish.",
-  "If harvestIndex returns reachedEnd or capped, call finish unless another distinct index still needs harvest or a person is required.",
-  "If harvestIndex recorded notices but reachedEnd and capped are both false, keep working or call harvestIndex again. Do not finish as if the advertised total was collected.",
-  "When finishing, report recorded and pages from the harvest result. Do not claim the site's advertised result count was collected when recorded is much smaller.",
+  "harvestIndex reachedEnd means this index's pages are exhausted, not that the site is done. Do not treat an advertised total as collected.",
+  "After harvestIndex, look for another solicitation index on this site that you have not harvested: other navigation, tabs, search, or portals. Use indexUrl to avoid harvesting the same page again.",
+  "You may act to change page size or filters, then harvestIndex again, if that would reveal unseen notices on this index.",
+  "Call finish only when you cannot find another unharvested solicitation index, harvestIndex returns capped, or you cannot continue.",
+  "When finishing, report recorded notices. Do not claim the site's advertised result count was collected when recorded is much smaller.",
   "If the site needs a person (login, SSO, captcha, access denied), call requestHuman, then observe again after they continue.",
-  "Call finish when harvest has collected notices, or when you cannot continue.",
 ].join(" ")
 
 const Goto = Tool.make("goto", {
@@ -51,8 +53,9 @@ const Act = makeActTool(
 
 const HarvestIndex = Tool.make("harvestIndex", {
   description: [
-    "Learn how this solicitation index is structured, then collect every currently open notice, including later pages.",
-    "Call when you can see a listing of open opportunities. Do not copy the rows yourself.",
+    "Record currently open notices from this solicitation index, including later pages.",
+    "Call when you can see a listing of open opportunities you have not harvested.",
+    "After it returns, look for another solicitation index on this site. reachedEnd is not a reason to finish.",
   ].join(" "),
   parameters: Schema.Struct({}),
   success: Schema.Struct({
@@ -60,6 +63,8 @@ const HarvestIndex = Tool.make("harvestIndex", {
     pages: Schema.Number,
     reachedEnd: Schema.Boolean,
     capped: Schema.Boolean,
+    retries: Schema.Number,
+    indexUrl: Schema.String,
   }),
   failure: Schema.String,
   failureMode: "return",
@@ -75,7 +80,7 @@ const RequestHuman = Tool.make("requestHuman", {
 })
 
 const Finish = Tool.make("finish", {
-  description: "End the crawl after collecting notices, or if you cannot continue.",
+  description: "End the crawl when no further solicitation index can be found, harvest is capped, or you cannot continue.",
   parameters: Schema.Struct({
     outcome: Schema.Literals(["completed", "failed"]),
     message: Schema.optionalKey(Schema.NonEmptyString),
@@ -105,9 +110,10 @@ const decodeSourceUrl = (url: string) =>
 
 const runAgent = Effect.fn("ScoutAgent.run")(function*(host: ScoutAgentHost) {
   const harvest = yield* HarvestAgent
+  const seen = new Set<string>()
   const outcome = yield* Ref.make<Outcome | undefined>(undefined)
   const chat = yield* Chat.empty
-  const report = makeReport(host)
+  const report = makeReport(host, "scout")
   const failTool = makeFailTool(host, report)
   const toolkit = yield* scoutToolkit.pipe(
     Effect.provide(scoutToolkit.toLayer({
@@ -120,24 +126,39 @@ const runAgent = Effect.fn("ScoutAgent.run")(function*(host: ScoutAgentHost) {
           Effect.catchTag("CrawlSessionError", (error) => failTool("goto", error.message)),
         ),
       act: (params) =>
-        report("act", params.instruction).pipe(
-          Effect.flatMap(() => host.session.act(params.instruction)),
-          Effect.as({ ok: true }),
-          Effect.catchTag("CrawlSessionError", (error) => failTool("act", error.message)),
-        ),
+        Effect.gen(function*() {
+          const id = crypto.randomUUID()
+          yield* report("act", params.instruction, { id })
+          const grounded = yield* host.session.act(params.instruction).pipe(
+            Effect.catchTag("CrawlSessionError", (error) => failTool("act", error.message)),
+          )
+          if (grounded.reasoningText !== undefined) {
+            yield* report("reasoning", grounded.reasoningText)
+          }
+          yield* report("act", params.instruction, {
+            id,
+            detail: describeBrowserAction(grounded.action),
+          })
+          return { ok: true }
+        }),
       observe: () =>
         Effect.gen(function*() {
           const observation = yield* host.session.observe("").pipe(
             Effect.catchTag("CrawlSessionError", (error) => failTool("observe", error.message)),
           )
-          yield* report("observe", `Read ${observation.url}`)
+          yield* report("observe", `Read ${observation.url}`, { detail: observation.summary })
           yield* host.reportDebug({ lastObservation: debugFromObservation(observation) })
           return observation
         }),
       harvestIndex: () =>
         report("note", "Collecting notices from this index.").pipe(
-          Effect.flatMap(() => harvest.run(host)),
+          Effect.flatMap(() => harvest.run(host, seen)),
           Effect.tap((result) => host.reportDebug({ harvest: result })),
+          Effect.flatMap((result) =>
+            host.session.currentUrl().pipe(
+              Effect.map((indexUrl) => ({ ...result, indexUrl })),
+            ),
+          ),
           Effect.catchTag("CrawlSessionError", (error) => failTool("harvestIndex", error.message)),
         ),
       requestHuman: (params) =>
@@ -179,17 +200,19 @@ const runAgent = Effect.fn("ScoutAgent.run")(function*(host: ScoutAgentHost) {
 
   yield* Effect.gen(function*() {
     for (let turn = 0; turn < scoutAgentMaxTurns; turn++) {
-      const response = yield* chat.generateText({
-        prompt,
-        toolkit,
-        concurrency: 1,
-      })
+      const { toolCalls } = yield* runStreamTurn(
+        chat.streamText({
+          prompt,
+          toolkit,
+          concurrency: 1,
+        }),
+        report,
+      )
       const decided = yield* Ref.get(outcome)
       if (decided !== undefined) {
         return
       }
-      yield* makeReportTurn(report)(response)
-      prompt = response.toolCalls.length > 0 ? [] : continuePrompt
+      prompt = toolCalls > 0 ? [] : continuePrompt
     }
 
     yield* failUnlessDone("Stopped after the turn budget without finishing.")

@@ -210,8 +210,12 @@ export class Crawls extends Context.Service<
               if (current === undefined) {
                 return
               }
+              const index = current.activity.findIndex((existing) => existing.id === entry.id)
+              const activity = index >= 0
+                ? current.activity.map((existing, position) => position === index ? entry : existing)
+                : [...current.activity, entry]
               patch(id, {
-                activity: [...current.activity, entry],
+                activity,
                 progressMessage: entry.message,
               })
               captureSessionDebug(id)
@@ -245,6 +249,7 @@ export class Crawls extends Context.Service<
           status: "running",
           activity: [new CrawlActivity({
             kind: "note",
+            phase: "system",
             message: "Opening the hosted browser.",
           })],
           progressMessage: "Opening the hosted browser.",
@@ -351,7 +356,8 @@ export class Crawls extends Context.Service<
     session?: {
       readonly close?: () => Effect.Effect<void>
       readonly observe?: CrawlSession["observe"]
-      readonly prepareHarvest?: CrawlSession["prepareHarvest"]
+      readonly peekJsonCaptures?: CrawlSession["peekJsonCaptures"]
+      readonly drainJsonCaptures?: CrawlSession["drainJsonCaptures"]
       readonly debugSnapshot?: () => CrawlDebug
     },
   ) =>
@@ -364,13 +370,15 @@ export class Crawls extends Context.Service<
             liveViewUrl: "https://live.example/view",
             goto: () => Effect.void,
             currentUrl: () => Effect.succeed("https://example.gov"),
-            act: () => Effect.void,
+            act: () =>
+              Effect.succeed({
+                action: { kind: "press" as const, key: "Escape" },
+              }),
             observe: session?.observe ??
               (() => Effect.succeed({ url: "https://example.gov", summary: "Open notices" })),
-            snapshotDom: () => Effect.succeed({ url: "https://example.gov", summary: "Open notices" }),
-            prepareHarvest: session?.prepareHarvest ?? (() => Effect.succeed("")),
-            extractVisibleListings: () => Effect.succeed([]),
-            paginateIndex: () => Effect.succeed(false),
+            peekJsonCaptures: session?.peekJsonCaptures ?? (() => Effect.succeed([])),
+            drainJsonCaptures: session?.drainJsonCaptures ?? (() => Effect.void),
+            runHarvestScript: () => Effect.succeed({ solicitations: [], hasNext: false }),
             debugSnapshot: session?.debugSnapshot ?? emptyCrawlDebug,
             close: session?.close ?? (() => Effect.void),
           }),

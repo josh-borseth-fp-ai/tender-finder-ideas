@@ -1,4 +1,11 @@
-import { SourceUrl, type AccessWall, type Crawl, type CrawlActivity, type Solicitation } from "@tender-finder/domain"
+import {
+  SourceUrl,
+  type AccessWall,
+  type Crawl,
+  type CrawlActivity,
+  type CrawlActivityPhase,
+  type Solicitation,
+} from "@tender-finder/domain"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { createFileRoute } from "@tanstack/react-router"
@@ -23,22 +30,45 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const [crawlId, setCrawlId] = useState<string | undefined>(undefined)
+  const boarded = crawlId !== undefined
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-7xl flex-col gap-10 px-6 py-10">
-      <header className="flex flex-col gap-3 border-b border-brass/30 pb-6">
-        <p className="font-mono text-[11px] tracking-[0.28em] text-brass uppercase">
-          Public procurement docket
-        </p>
-        <h1 className="font-heading text-4xl font-semibold tracking-wide text-paper uppercase sm:text-5xl">
-          Tender Finder
-        </h1>
-        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          Paste any page of a procurement site. We find the open notices, stop if the site
-          needs a person, and collect them once the path is clear.
-        </p>
+    <main
+      className={
+        boarded
+          ? "flex h-svh min-h-0 flex-col gap-4 overflow-hidden px-4 py-4 lg:px-6"
+          : "mx-auto flex min-h-svh max-w-7xl flex-col gap-10 px-6 py-10"
+      }
+    >
+      <header
+        className={
+          boarded
+            ? "flex shrink-0 flex-col gap-2 border-b border-brass/30 pb-3 sm:flex-row sm:items-end sm:justify-between"
+            : "flex flex-col gap-3 border-b border-brass/30 pb-6"
+        }
+      >
+        <div className="flex flex-col gap-1">
+          <p className="font-mono text-[11px] tracking-[0.28em] text-brass uppercase">
+            Public procurement docket
+          </p>
+          <h1
+            className={
+              boarded
+                ? "font-heading text-2xl font-semibold tracking-wide text-paper uppercase"
+                : "font-heading text-4xl font-semibold tracking-wide text-paper uppercase sm:text-5xl"
+            }
+          >
+            Tender Finder
+          </h1>
+          {!boarded && (
+            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+              Paste any page of a procurement site. We find the open notices, stop if the site
+              needs a person, and collect them once the path is clear.
+            </p>
+          )}
+        </div>
       </header>
-      <UrlForm onStarted={setCrawlId} />
+      <UrlForm compact={boarded} onStarted={setCrawlId} />
       {crawlId !== undefined && <CrawlBoard crawlId={crawlId} onReset={() => setCrawlId(undefined)} />}
     </main>
   )
@@ -46,8 +76,10 @@ function Home() {
 
 function UrlForm({
   onStarted,
+  compact = false,
 }: {
   onStarted: (id: string) => void
+  compact?: boolean
 }) {
   const startCrawl = useAtomSet(startCrawlAtom, { mode: "promise" })
   const [error, setError] = useState<string | undefined>(undefined)
@@ -59,7 +91,11 @@ function UrlForm({
 
   return (
     <form
-      className="grid gap-4 rounded-sm border border-brass/25 bg-navy/80 p-5 shadow-[inset_0_1px_0_color-mix(in_oklab,white_8%,transparent)]"
+      className={
+        compact
+          ? "shrink-0 rounded-sm border border-brass/25 bg-navy/80 p-3"
+          : "grid gap-4 rounded-sm border border-brass/25 bg-navy/80 p-5 shadow-[inset_0_1px_0_color-mix(in_oklab,white_8%,transparent)]"
+      }
       onSubmit={form.handleSubmit(async (values) => {
         setPending(true)
         setError(undefined)
@@ -153,15 +189,12 @@ function CrawlBoard({
   }
 
   return (
-    <section className="grid gap-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.9fr)_minmax(18rem,0.75fr)]">
+    <section className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.95fr)_minmax(18rem,0.8fr)]">
       <LiveView crawl={crawl} />
-      <ActivityLog crawl={crawl} />
-      <aside className="flex flex-col gap-5">
-        <StatusPanel crawl={crawl} />
+      <WorkingRecord crawl={crawl} />
+      <aside className="flex max-h-[42svh] min-h-0 flex-1 flex-col gap-3 overflow-hidden xl:max-h-none">
+        <StatusPanel crawl={crawl} onReset={onReset} />
         <SolicitationList solicitations={crawl.solicitations} />
-        <Button variant="outline" className="w-fit rounded-sm" onClick={onReset}>
-          New search
-        </Button>
       </aside>
     </section>
   )
@@ -190,8 +223,8 @@ function LiveView({ crawl }: { crawl: Crawl }) {
   }, [])
 
   return (
-    <div className="relative overflow-hidden rounded-sm border border-brass/35 bg-ink shadow-[0_0_0_1px_color-mix(in_oklab,var(--brass)_18%,transparent)]">
-      <div className="flex items-center justify-between border-b border-brass/25 px-4 py-2">
+    <div className="flex max-h-[42svh] min-h-0 flex-1 flex-col overflow-hidden rounded-sm border border-brass/35 bg-ink shadow-[0_0_0_1px_color-mix(in_oklab,var(--brass)_18%,transparent)] xl:max-h-none">
+      <div className="flex shrink-0 items-center justify-between border-b border-brass/25 px-4 py-2">
         <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Hosted browser</p>
         <p className="truncate font-mono text-[11px] text-muted-foreground">{crawl.sourceUrl}</p>
       </div>
@@ -203,12 +236,12 @@ function LiveView({ crawl }: { crawl: Crawl }) {
           allow="clipboard-read; clipboard-write"
           className={
             interactive
-              ? "aspect-16/10 min-h-112 w-full bg-black"
-              : "aspect-16/10 min-h-112 w-full bg-black pointer-events-none"
+              ? "min-h-0 w-full flex-1 bg-black"
+              : "min-h-0 w-full flex-1 bg-black pointer-events-none"
           }
         />
       ) : (
-        <div className="flex min-h-112 items-center justify-center bg-ink/80">
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-ink/80">
           <p className="font-mono text-sm text-muted-foreground">
             {sessionEnded ? "Hosted browser closed." : "Waiting for live view…"}
           </p>
@@ -218,28 +251,38 @@ function LiveView({ crawl }: { crawl: Crawl }) {
   )
 }
 
-function ActivityLog({ crawl }: { crawl: Crawl }) {
+function WorkingRecord({ crawl }: { crawl: Crawl }) {
   const scroller = useRef<HTMLDivElement>(null)
+  const stickToBottom = useRef(true)
   const entries = crawl.activity
   const running = activeStatuses.has(crawl.status)
+  const groups = groupWorkingRecord(entries)
+  const streaming = entries.some((entry) => entry.streaming === true)
 
   useEffect(() => {
     const node = scroller.current
-    if (node === null) {
+    if (node === null || !stickToBottom.current) {
       return
     }
     node.scrollTop = node.scrollHeight
-  }, [entries.length])
+  }, [entries, streaming])
 
   return (
-    <div className="flex max-h-160 min-h-112 flex-col overflow-hidden rounded-sm border border-brass/25 bg-navy">
-      <div className="flex items-center justify-between border-b border-brass/25 px-4 py-2">
-        <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Running record</p>
+    <div className="flex max-h-[42svh] min-h-0 flex-1 flex-col overflow-hidden rounded-sm border border-brass/25 bg-navy xl:max-h-none">
+      <div className="flex shrink-0 items-center justify-between border-b border-brass/25 px-4 py-2">
+        <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Working record</p>
         <p className="font-mono text-[11px] text-muted-foreground">
           {entries.length === 0 ? "No notes yet" : `${entries.length} ${entries.length === 1 ? "note" : "notes"}`}
         </p>
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div
+        ref={scroller}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
+        onScroll={(event) => {
+          const node = event.currentTarget
+          stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48
+        }}
+      >
         {entries.length === 0 ? (
           <p className="text-sm leading-6 text-muted-foreground">
             {running
@@ -247,45 +290,69 @@ function ActivityLog({ crawl }: { crawl: Crawl }) {
               : "No working notes were recorded."}
           </p>
         ) : (
-          <ol className="flex flex-col gap-3">
-            {entries.map((entry, index) => (
-              <li key={`${index}-${entry.kind}`} className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-3">
-                <span className="pt-0.5 font-mono text-[11px] text-brass/80">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <div className="min-w-0">
-                  <p className="font-mono text-[10px] tracking-[0.18em] text-brass uppercase">
-                    {activityStamp(entry.kind)}
-                  </p>
-                  <p className={activityBodyClass(entry)}>{entry.message}</p>
-                </div>
-              </li>
-            ))}
-            {running && (
-              <li className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-3">
-                <span className="pt-0.5 font-mono text-[11px] text-brass/50">
-                  {String(entries.length + 1).padStart(2, "0")}
-                </span>
-                <p className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-                  Working
+          <div className="flex flex-col gap-5">
+            {groups.map((group) => (
+              <section key={`${group.phase}-${group.entries[0]?.id ?? group.phase}`} className="min-w-0">
+                <p className="mb-2 font-mono text-[10px] tracking-[0.22em] text-brass/80 uppercase">
+                  {phaseCopy(group.phase)}
                 </p>
-              </li>
+                <ol className="flex flex-col gap-3 border-l border-brass/25 pl-3">
+                  {group.entries.map((entry) => (
+                    <li key={entry.id} className="min-w-0">
+                      <p className="font-mono text-[10px] tracking-[0.18em] text-brass uppercase">
+                        {activityStamp(entry.kind)}
+                        {entry.streaming === true ? " · live" : ""}
+                      </p>
+                      <p className={activityBodyClass(entry)}>
+                        {entry.message}
+                        {entry.streaming === true ? "▍" : ""}
+                      </p>
+                      {entry.kind === "observe" && entry.detail !== undefined ? (
+                        <details className="mt-2 rounded-sm border border-brass/20 bg-ink/40">
+                          <summary className="cursor-pointer px-2 py-1 font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">
+                            Page snapshot
+                          </summary>
+                          <pre className="max-h-40 overflow-auto px-2 pb-2 font-mono text-[11px] leading-5 text-paper/80 whitespace-pre-wrap">
+                            {entry.detail}
+                          </pre>
+                        </details>
+                      ) : entry.detail !== undefined ? (
+                        <pre className="mt-2 max-h-48 overflow-auto rounded-sm border border-brass/20 bg-ink/50 p-2 font-mono text-[11px] leading-5 text-kraft whitespace-pre-wrap">
+                          {entry.detail}
+                        </pre>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ))}
+            {running && !streaming && (
+              <p className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+                Working
+              </p>
             )}
-          </ol>
+          </div>
         )}
       </div>
     </div>
   )
 }
 
-function StatusPanel({ crawl }: { crawl: Crawl }) {
+function StatusPanel({ crawl, onReset }: { crawl: Crawl; onReset: () => void }) {
   const resumeCrawl = useAtomSet(resumeCrawlAtom, { mode: "promise" })
   const [pending, setPending] = useState(false)
 
   return (
-    <div className="rounded-sm border border-brass/25 bg-navy p-5">
-      <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Status</p>
-      <p className="mt-2 font-heading text-2xl tracking-wide uppercase">{statusCopy(crawl.status)}</p>
+    <div className="shrink-0 rounded-sm border border-brass/25 bg-navy p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Status</p>
+          <p className="mt-1 font-heading text-xl tracking-wide uppercase">{statusCopy(crawl.status)}</p>
+        </div>
+        <Button variant="outline" className="shrink-0 rounded-sm" onClick={onReset}>
+          New search
+        </Button>
+      </div>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{statusDetail(crawl)}</p>
       {crawl.status === "blocked" && crawl.accessWall !== undefined && (
         <div className="mt-4 flex flex-col gap-3">
@@ -323,7 +390,7 @@ function SolicitationList({
 }) {
   if (solicitations.length === 0) {
     return (
-      <div className="rounded-sm border border-dashed border-brass/25 p-5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border border-dashed border-brass/25 p-4">
         <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Open notices</p>
         <p className="mt-2 text-sm text-muted-foreground">None collected yet.</p>
       </div>
@@ -331,30 +398,36 @@ function SolicitationList({
   }
 
   return (
-    <ol className="flex flex-col gap-3">
-      {solicitations.map((item) => (
-        <li key={`${item.title}-${item.url ?? ""}`} className="rounded-sm bg-kraft px-4 py-3 text-ink">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="font-heading text-lg leading-6 tracking-wide uppercase">{item.title}</h2>
-            <span className="shrink-0 font-mono text-[10px] tracking-[0.18em] text-brass uppercase">Open</span>
-          </div>
-          <dl className="mt-2 grid gap-1 font-mono text-xs text-ink/70">
-            {item.agency !== undefined && <div>Agency · {item.agency}</div>}
-            {item.dueDate !== undefined && <div>Due · {item.dueDate}</div>}
-            {item.solicitationNumber !== undefined && <div>No. · {item.solicitationNumber}</div>}
-          </dl>
-          {item.summary !== undefined && <p className="mt-2 text-sm leading-6 text-ink/80">{item.summary}</p>}
-          {item.description !== undefined && (
-            <p className="mt-2 text-sm leading-6 text-ink/80">{item.description}</p>
-          )}
-          {item.url !== undefined && (
-            <a className="mt-2 inline-block text-sm font-medium text-ink underline decoration-brass/70" href={item.url}>
-              Open notice
-            </a>
-          )}
-        </li>
-      ))}
-    </ol>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border border-brass/25 bg-navy">
+      <div className="flex shrink-0 items-center justify-between border-b border-brass/25 px-4 py-2">
+        <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Open notices</p>
+        <p className="font-mono text-[11px] text-muted-foreground">{solicitations.length}</p>
+      </div>
+      <ol className="min-h-0 flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+        {solicitations.map((item) => (
+          <li key={`${item.title}-${item.url ?? ""}`} className="rounded-sm bg-kraft px-4 py-3 text-ink">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="font-heading text-lg leading-6 tracking-wide uppercase">{item.title}</h2>
+              <span className="shrink-0 font-mono text-[10px] tracking-[0.18em] text-brass uppercase">Open</span>
+            </div>
+            <dl className="mt-2 grid gap-1 font-mono text-xs text-ink/70">
+              {item.agency !== undefined && <div>Agency · {item.agency}</div>}
+              {item.dueDate !== undefined && <div>Due · {item.dueDate}</div>}
+              {item.solicitationNumber !== undefined && <div>No. · {item.solicitationNumber}</div>}
+            </dl>
+            {item.summary !== undefined && <p className="mt-2 text-sm leading-6 text-ink/80">{item.summary}</p>}
+            {item.description !== undefined && (
+              <p className="mt-2 text-sm leading-6 text-ink/80">{item.description}</p>
+            )}
+            {item.url !== undefined && (
+              <a className="mt-2 inline-block text-sm font-medium text-ink underline decoration-brass/70" href={item.url}>
+                Open notice
+              </a>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
   )
 }
 
@@ -415,7 +488,34 @@ function activityStamp(kind: CrawlActivity["kind"]) {
       return "Hold"
     case "finish":
       return "End"
+    case "script":
+      return "Script"
   }
+}
+
+function phaseCopy(phase: CrawlActivityPhase) {
+  switch (phase) {
+    case "scout":
+      return "Scout"
+    case "harvest":
+      return "Harvest"
+    case "system":
+      return "Crawl"
+  }
+}
+
+function groupWorkingRecord(entries: ReadonlyArray<CrawlActivity>) {
+  const groups: Array<{ phase: CrawlActivityPhase; entries: Array<CrawlActivity> }> = []
+  for (const entry of entries) {
+    const phase = entry.phase ?? "scout"
+    const last = groups.at(-1)
+    if (last !== undefined && last.phase === phase) {
+      last.entries.push(entry)
+    } else {
+      groups.push({ phase, entries: [entry] })
+    }
+  }
+  return groups
 }
 
 function activityBodyClass(entry: CrawlActivity) {

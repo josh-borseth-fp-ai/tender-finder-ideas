@@ -37,5 +37,17 @@ describe("CrawlActivity", () => {
     })
     expect(entry.kind).toBe("reasoning")
     expect(entry.message).toBe("The notices are behind a filter.")
+    expect(entry.id.length).toBeGreaterThan(0)
+  })
+
+  it("keeps a caller-supplied id", () => {
+    const entry = new CrawlActivity({
+      id: "act-1",
+      kind: "note",
+      message: "Opening the hosted browser.",
+      phase: "system",
+    })
+    expect(entry.id).toBe("act-1")
+    expect(entry.phase).toBe("system")
   })
 })

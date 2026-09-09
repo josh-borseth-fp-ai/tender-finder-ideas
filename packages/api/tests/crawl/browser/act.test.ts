@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   BrowserAction,
+  describeBrowserAction,
   executeBrowserAction,
   validateBrowserAction,
   type ActLocator,
@@ -152,5 +153,15 @@ describe("executeBrowserAction", () => {
         1_000,
       ),
     ).rejects.toThrow("No node for selector:#missing")
+  })
+})
+
+describe("describeBrowserAction", () => {
+  it("formats a click with role and name", () => {
+    expect(describeBrowserAction(new BrowserAction({
+      kind: "click",
+      role: "button",
+      name: "Next",
+    }))).toBe("click role=button name=Next")
   })
 })

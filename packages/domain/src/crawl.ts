@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 
 export const SourceUrl = Schema.NonEmptyString.pipe(
   Schema.check(Schema.isPattern(/^https?:\/\/[^\s]+$/i, { expected: "an http or https URL" })),
@@ -44,12 +44,25 @@ export const CrawlActivityKind = Schema.Literals([
   "record",
   "human",
   "finish",
+  "script",
 ])
 export type CrawlActivityKind = typeof CrawlActivityKind.Type
 
+export const CrawlActivityPhase = Schema.Literals(["scout", "harvest", "system"])
+export type CrawlActivityPhase = typeof CrawlActivityPhase.Type
+
+const activityId = () =>
+  `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+
 export class CrawlActivity extends Schema.Class<CrawlActivity>("CrawlActivity")({
+  id: Schema.NonEmptyString.pipe(
+    Schema.withConstructorDefault(Effect.sync(activityId)),
+  ),
   kind: CrawlActivityKind,
   message: Schema.NonEmptyString,
+  phase: Schema.optionalKey(CrawlActivityPhase),
+  detail: Schema.optionalKey(Schema.String),
+  streaming: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 export class Crawl extends Schema.Class<Crawl>("Crawl")({

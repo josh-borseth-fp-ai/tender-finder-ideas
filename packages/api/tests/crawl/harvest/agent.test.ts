@@ -23,18 +23,18 @@ const emptyUsage: Response.FinishPartEncoded["usage"] = {
   },
 }
 
-const pageOf = (titles: ReadonlyArray<string>) =>
-  titles.map((title) => new Solicitation({ title, url: `https://example.gov/${title}` }))
-
 const makeSession = (overrides?: Partial<HarvestSession>): HarvestSession => ({
-  prepareHarvest: () => Effect.succeed("Learned JSON listings at data.results."),
-  extractVisibleListings: () => Effect.succeed(pageOf(["Road resurfacing"])),
-  paginateIndex: () => Effect.succeed(false),
-  act: () => Effect.void,
   observe: () =>
     Effect.succeed({
       url: "https://example.gov/bids",
       summary: "Open notices listed",
+    }),
+  peekJsonCaptures: () => Effect.succeed([]),
+  drainJsonCaptures: () => Effect.void,
+  runHarvestScript: () =>
+    Effect.succeed({
+      solicitations: [{ title: "Road resurfacing", url: "https://example.gov/Road resurfacing" }],
+      hasNext: false,
     }),
   ...overrides,
 })
@@ -61,143 +61,40 @@ const makeHost = (session: HarvestSession = makeSession()): HarvestAgentHost & {
   }
 }
 
-const withAgent = (generateText: () => Array<Response.PartEncoded>) =>
+const withAgent = () =>
   HarvestAgent.layer.pipe(
     Layer.provide(
       Layer.effect(
         LanguageModel.LanguageModel,
         LanguageModel.make({
-          generateText: () => Effect.succeed(generateText()),
+          generateText: () =>
+            Effect.succeed([
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  extractSource: "extract",
+                  paginateSource: "paginate",
+                }),
+              },
+              { type: "finish" as const, reason: "stop" as const, usage: emptyUsage },
+            ]),
           streamText: () => Stream.empty,
         }),
       ),
     ),
   )
 
-const toolCall = (id: string, name: string, params: Record<string, unknown> = {}) => ({
-  type: "tool-call" as const,
-  id,
-  name,
-  params,
-})
-
 describe("HarvestAgent", () => {
-  it.effect("learns the index, collects pages, and finishes", () => {
-    let turn = 0
+  it.effect("runs the Playwright harvest script and finishes", () => {
     const host = makeHost()
     return Effect.gen(function*() {
       const agent = yield* HarvestAgent
       const result = yield* agent.run(host)
-      expect(result).toEqual({
-        recorded: 1,
-        pages: 1,
-        reachedEnd: true,
-        capped: false,
-      })
-      expect(host.solicitations.map((item) => item.title)).toEqual(["Road resurfacing"])
-      expect(host.events).toContain("note:Learning how this listing is structured.")
-      expect(host.events).toContain("note:Learned JSON listings at data.results.")
-      expect(host.events).toContain("record:Recording 1 open notice.")
-      expect(host.events).toContain("note:Finished collecting notices from this index.")
-    }).pipe(Effect.provide(withAgent(() => {
-      turn += 1
-      if (turn === 1) {
-        return [toolCall("call-learn", "learnIndex"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      if (turn === 2) {
-        return [toolCall("call-collect", "collectPages"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      return [
-        toolCall("call-finish", "finish", { message: "Finished collecting notices from this index." }),
-        { type: "finish", reason: "tool-calls", usage: emptyUsage },
-      ]
-    })))
-  })
-
-  it.effect("observes and learns again when the first collect is empty", () => {
-    let turn = 0
-    let learned = 0
-    const host = makeHost(makeSession({
-      prepareHarvest: () =>
-        Effect.sync(() => {
-          learned += 1
-          return learned === 1
-            ? "Learned DOM listings at .empty."
-            : "Learned JSON listings at data.results."
-        }),
-      extractVisibleListings: () =>
-        Effect.sync(() => learned >= 2 ? pageOf(["Road resurfacing"]) : []),
-    }))
-    return Effect.gen(function*() {
-      const agent = yield* HarvestAgent
-      const result = yield* agent.run(host)
       expect(result.recorded).toBe(1)
+      expect(result.reachedEnd).toBe(true)
       expect(host.solicitations.map((item) => item.title)).toEqual(["Road resurfacing"])
-      expect(host.events.filter((event) => event.startsWith("observe:")).length).toBe(1)
-      expect(host.events.filter((event) =>
-        event === "note:Learning how this listing is structured."
-      ).length).toBe(2)
-    }).pipe(Effect.provide(withAgent(() => {
-      turn += 1
-      if (turn === 1) {
-        return [toolCall("call-learn-1", "learnIndex"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      if (turn === 2) {
-        return [toolCall("call-collect-1", "collectPages"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      if (turn === 3) {
-        return [toolCall("call-observe", "observe"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      if (turn === 4) {
-        return [toolCall("call-learn-2", "learnIndex"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      if (turn === 5) {
-        return [toolCall("call-collect-2", "collectPages"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      return [toolCall("call-finish", "finish"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-    })))
-  })
-
-  it.effect("acts then collects again when recipe pagination is stuck", () => {
-    let turn = 0
-    let moved = false
-    const host = makeHost(makeSession({
-      extractVisibleListings: () =>
-        Effect.sync(() => moved ? pageOf(["Bridge inspection"]) : pageOf(["Road resurfacing"])),
-      paginateIndex: () => Effect.succeed(false),
-      act: () =>
-        Effect.sync(() => {
-          moved = true
-        }),
-    }))
-    return Effect.gen(function*() {
-      const agent = yield* HarvestAgent
-      const result = yield* agent.run(host)
-      expect(result.recorded).toBe(2)
-      expect(host.solicitations.map((item) => item.title)).toEqual([
-        "Road resurfacing",
-        "Bridge inspection",
-      ])
-      expect(host.events).toContain("act:Click Next")
-      expect(host.events.filter((event) => event.startsWith("record:")).length).toBe(2)
-    }).pipe(Effect.provide(withAgent(() => {
-      turn += 1
-      if (turn === 1) {
-        return [toolCall("call-learn", "learnIndex"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      if (turn === 2) {
-        return [toolCall("call-collect-1", "collectPages"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      if (turn === 3) {
-        return [
-          toolCall("call-act", "act", { instruction: "Click Next" }),
-          { type: "finish", reason: "tool-calls", usage: emptyUsage },
-        ]
-      }
-      if (turn === 4) {
-        return [toolCall("call-collect-2", "collectPages"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-      }
-      return [toolCall("call-finish", "finish"), { type: "finish", reason: "tool-calls", usage: emptyUsage }]
-    })))
+      expect(host.events).toContain("note:Writing a Playwright script for this index.")
+      expect(host.events).toContain("note:Harvested 1 from this listing (1 pages).")
+    }).pipe(Effect.provide(withAgent()))
   })
 })
