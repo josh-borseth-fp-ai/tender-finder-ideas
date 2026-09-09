@@ -1,0 +1,17 @@
+{
+  "name": "@tender-finder/cli",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun --env-file=../../.env src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tender-finder/api": "workspace:*",
+    "@tender-finder/domain": "workspace:*",
+    "effect": "4.0.0-rc.112"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  }
+}

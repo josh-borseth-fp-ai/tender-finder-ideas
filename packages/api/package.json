@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
+    "./crawls": "./src/crawl/api.ts",
     "./integrations": "./src/integrations/index.ts"
   },
   "scripts": {
@@ -14,10 +15,9 @@
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.19.1",
-    "@browserbasehq/stagehand": "^4.0.2",
-    "@openrouter/sdk": "^1.2.110",
+    "@effect/ai-openrouter": "4.0.0-rc.112",
     "@tender-finder/domain": "workspace:*",
     "effect": "4.0.0-rc.112",
-    "zod": "4.4.3"
+    "playwright-core": "1.63.0"
   }
 }

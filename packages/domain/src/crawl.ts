@@ -10,10 +10,8 @@ export const CrawlId = Schema.NonEmptyString.pipe(Schema.brand("CrawlId"))
 export type CrawlId = typeof CrawlId.Type
 
 export const CrawlStatus = Schema.Literals([
-  "probing",
+  "running",
   "blocked",
-  "discovering",
-  "crawling",
   "completed",
   "failed",
 ])
@@ -37,6 +35,23 @@ export class Solicitation extends Schema.Class<Solicitation>("Solicitation")({
   description: Schema.optionalKey(Schema.String),
 }) {}
 
+export const CrawlActivityKind = Schema.Literals([
+  "reasoning",
+  "note",
+  "goto",
+  "act",
+  "observe",
+  "record",
+  "human",
+  "finish",
+])
+export type CrawlActivityKind = typeof CrawlActivityKind.Type
+
+export class CrawlActivity extends Schema.Class<CrawlActivity>("CrawlActivity")({
+  kind: CrawlActivityKind,
+  message: Schema.NonEmptyString,
+}) {}
+
 export class Crawl extends Schema.Class<Crawl>("Crawl")({
   id: CrawlId,
   sourceUrl: SourceUrl,
@@ -44,6 +59,8 @@ export class Crawl extends Schema.Class<Crawl>("Crawl")({
   liveViewUrl: Schema.optionalKey(Schema.String),
   accessWall: Schema.optionalKey(AccessWall),
   failureMessage: Schema.optionalKey(Schema.String),
+  progressMessage: Schema.optionalKey(Schema.String),
+  activity: Schema.Array(CrawlActivity),
   solicitations: Schema.Array(Solicitation),
 }) {}
 

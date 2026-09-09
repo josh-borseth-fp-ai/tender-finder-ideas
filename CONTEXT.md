@@ -25,5 +25,13 @@ A login, captcha, or other human gate that stops a Crawl until a person acts in 
 _Avoid_: block, challenge, auth, captcha (as the general term)
 
 **Live view**:
-The interactive Browserbase window for the hosted browser of a Crawl.
+The Browserbase window for the hosted browser of a Crawl. A person watches it while the crawl collects notices, and takes it over only when an access wall blocks the crawl. It closes when the hosted session ends.
 _Avoid_: debugger, iframe, session viewer
+
+**Scout**:
+The phase of a Crawl that navigates from the Source URL to a solicitation index — opening pages, dismissing overlays, and handling access walls.
+_Avoid_: crawl agent, outer agent, navigator
+
+**Harvest**:
+The phase of a Crawl that learns how a solicitation index is structured and records every currently open notice from it, including later pages.
+_Avoid_: scrape, extract, listing loop

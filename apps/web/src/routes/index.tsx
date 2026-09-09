@@ -1,10 +1,10 @@
-import { SourceUrl, type AccessWall, type Crawl, type Solicitation } from "@tender-finder/domain"
+import { SourceUrl, type AccessWall, type Crawl, type CrawlActivity, type Solicitation } from "@tender-finder/domain"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { createFileRoute } from "@tanstack/react-router"
 import { Schema } from "effect"
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -15,7 +15,7 @@ const SourceForm = Schema.Struct({
   url: SourceUrl,
 })
 
-const activeStatuses = new Set(["probing", "blocked", "discovering", "crawling"])
+const activeStatuses = new Set(["running", "blocked"])
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -25,7 +25,7 @@ function Home() {
   const [crawlId, setCrawlId] = useState<string | undefined>(undefined)
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-6xl flex-col gap-10 px-6 py-10">
+    <main className="mx-auto flex min-h-svh max-w-7xl flex-col gap-10 px-6 py-10">
       <header className="flex flex-col gap-3 border-b border-brass/30 pb-6">
         <p className="font-mono text-[11px] tracking-[0.28em] text-brass uppercase">
           Public procurement docket
@@ -133,7 +133,7 @@ function CrawlBoard({
     }
     const timer = window.setInterval(() => {
       refresh()
-    }, 1500)
+    }, 800)
     return () => window.clearInterval(timer)
   }, [refresh, status])
 
@@ -153,8 +153,9 @@ function CrawlBoard({
   }
 
   return (
-    <section className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
+    <section className="grid gap-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.9fr)_minmax(18rem,0.75fr)]">
       <LiveView crawl={crawl} />
+      <ActivityLog crawl={crawl} />
       <aside className="flex flex-col gap-5">
         <StatusPanel crawl={crawl} />
         <SolicitationList solicitations={crawl.solicitations} />
@@ -167,25 +168,112 @@ function CrawlBoard({
 }
 
 function LiveView({ crawl }: { crawl: Crawl }) {
+  const [disconnected, setDisconnected] = useState(false)
+  const interactive = crawl.status === "blocked"
+  const showFrame = crawl.liveViewUrl !== undefined && !disconnected
+  const sessionEnded = disconnected || crawl.status === "completed" || crawl.status === "failed"
+
+  useEffect(() => {
+    if (crawl.liveViewUrl !== undefined) {
+      setDisconnected(false)
+    }
+  }, [crawl.liveViewUrl])
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.data === "browserbase-disconnected") {
+        setDisconnected(true)
+      }
+    }
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
+  }, [])
+
   return (
     <div className="relative overflow-hidden rounded-sm border border-brass/35 bg-ink shadow-[0_0_0_1px_color-mix(in_oklab,var(--brass)_18%,transparent)]">
       <div className="flex items-center justify-between border-b border-brass/25 px-4 py-2">
         <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Hosted browser</p>
         <p className="truncate font-mono text-[11px] text-muted-foreground">{crawl.sourceUrl}</p>
       </div>
-      {crawl.liveViewUrl !== undefined ? (
+      {showFrame && crawl.liveViewUrl !== undefined ? (
         <iframe
           title="Hosted browser live view"
           src={crawl.liveViewUrl}
           sandbox="allow-same-origin allow-scripts"
           allow="clipboard-read; clipboard-write"
-          className="aspect-16/10 min-h-112 w-full bg-black"
+          className={
+            interactive
+              ? "aspect-16/10 min-h-112 w-full bg-black"
+              : "aspect-16/10 min-h-112 w-full bg-black pointer-events-none"
+          }
         />
       ) : (
         <div className="flex min-h-112 items-center justify-center bg-ink/80">
-          <p className="font-mono text-sm text-muted-foreground">Waiting for live view…</p>
+          <p className="font-mono text-sm text-muted-foreground">
+            {sessionEnded ? "Hosted browser closed." : "Waiting for live view…"}
+          </p>
         </div>
       )}
+    </div>
+  )
+}
+
+function ActivityLog({ crawl }: { crawl: Crawl }) {
+  const scroller = useRef<HTMLDivElement>(null)
+  const entries = crawl.activity
+  const running = activeStatuses.has(crawl.status)
+
+  useEffect(() => {
+    const node = scroller.current
+    if (node === null) {
+      return
+    }
+    node.scrollTop = node.scrollHeight
+  }, [entries.length])
+
+  return (
+    <div className="flex max-h-160 min-h-112 flex-col overflow-hidden rounded-sm border border-brass/25 bg-navy">
+      <div className="flex items-center justify-between border-b border-brass/25 px-4 py-2">
+        <p className="font-mono text-[11px] tracking-[0.2em] text-brass uppercase">Running record</p>
+        <p className="font-mono text-[11px] text-muted-foreground">
+          {entries.length === 0 ? "No notes yet" : `${entries.length} ${entries.length === 1 ? "note" : "notes"}`}
+        </p>
+      </div>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {entries.length === 0 ? (
+          <p className="text-sm leading-6 text-muted-foreground">
+            {running
+              ? "Waiting for the first note from the model."
+              : "No working notes were recorded."}
+          </p>
+        ) : (
+          <ol className="flex flex-col gap-3">
+            {entries.map((entry, index) => (
+              <li key={`${index}-${entry.kind}`} className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-3">
+                <span className="pt-0.5 font-mono text-[11px] text-brass/80">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] tracking-[0.18em] text-brass uppercase">
+                    {activityStamp(entry.kind)}
+                  </p>
+                  <p className={activityBodyClass(entry)}>{entry.message}</p>
+                </div>
+              </li>
+            ))}
+            {running && (
+              <li className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-3">
+                <span className="pt-0.5 font-mono text-[11px] text-brass/50">
+                  {String(entries.length + 1).padStart(2, "0")}
+                </span>
+                <p className="font-mono text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+                  Working
+                </p>
+              </li>
+            )}
+          </ol>
+        )}
+      </div>
     </div>
   )
 }
@@ -272,14 +360,10 @@ function SolicitationList({
 
 function statusCopy(status: Crawl["status"]) {
   switch (status) {
-    case "probing":
-      return "Probing access"
+    case "running":
+      return "Collecting notices"
     case "blocked":
       return "Needs a person"
-    case "discovering":
-      return "Finding open notices"
-    case "crawling":
-      return "Collecting notices"
     case "completed":
       return "Docket complete"
     case "failed":
@@ -289,14 +373,10 @@ function statusCopy(status: Crawl["status"]) {
 
 function statusDetail(crawl: Crawl) {
   switch (crawl.status) {
-    case "probing":
-      return "Checking whether the hosted browser can reach the listings."
+    case "running":
+      return crawl.progressMessage ?? "Working through the site in the hosted browser."
     case "blocked":
       return "Sign in or clear the wall in the hosted browser, then continue."
-    case "discovering":
-      return "Looking for the page of open notices on this site."
-    case "crawling":
-      return "Gathering open solicitations from the site."
     case "completed":
       return crawl.solicitations.length === 1
         ? "1 open notice collected."
@@ -315,4 +395,35 @@ function wallCopy(wall: AccessWall) {
     case "accessDenied":
       return wall.reason || "This site denied access."
   }
+}
+
+function activityStamp(kind: CrawlActivity["kind"]) {
+  switch (kind) {
+    case "reasoning":
+      return "Thinking"
+    case "note":
+      return "Note"
+    case "goto":
+      return "Open"
+    case "act":
+      return "Act"
+    case "observe":
+      return "Read"
+    case "record":
+      return "File"
+    case "human":
+      return "Hold"
+    case "finish":
+      return "End"
+  }
+}
+
+function activityBodyClass(entry: CrawlActivity) {
+  if (entry.kind === "reasoning") {
+    return "mt-1 whitespace-pre-wrap text-sm leading-6 text-muted-foreground italic"
+  }
+  if (entry.kind === "human") {
+    return "mt-1 whitespace-pre-wrap text-sm leading-6 text-paper"
+  }
+  return "mt-1 whitespace-pre-wrap text-sm leading-6 text-paper/90"
 }

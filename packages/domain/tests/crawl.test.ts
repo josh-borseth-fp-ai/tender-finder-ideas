@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
-import { InvalidSourceUrl, SourceUrl } from "../src/crawl.ts"
+import { CrawlActivity, InvalidSourceUrl, SourceUrl } from "../src/crawl.ts"
 
 describe("SourceUrl", () => {
   it("accepts http and https addresses", () => {
@@ -26,5 +26,16 @@ describe("InvalidSourceUrl", () => {
     const error = new InvalidSourceUrl({ url: "nope" })
     expect(error._tag).toBe("InvalidSourceUrl")
     expect(error.url).toBe("nope")
+  })
+})
+
+describe("CrawlActivity", () => {
+  it("records a reasoning note", () => {
+    const entry = new CrawlActivity({
+      kind: "reasoning",
+      message: "The notices are behind a filter.",
+    })
+    expect(entry.kind).toBe("reasoning")
+    expect(entry.message).toBe("The notices are behind a filter.")
   })
 })

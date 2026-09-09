@@ -1,0 +1,13 @@
+diff --git a/lib/utilsBundle.js b/lib/utilsBundle.js
+index d062f7c38c8f9853da5f27243a37a6881d2c1de2..651a9b819dcc87ae8fb5f15a8d4717368ab6c009 100644
+--- a/lib/utilsBundle.js
++++ b/lib/utilsBundle.js
+@@ -85260,7 +85260,7 @@ var mime = src_default;
+ var minimatch2 = minimatch;
+ var open3 = open_default;
+ var progress = import_progress.default;
+-var ws = wrapper_default;
++var ws = "Bun" in globalThis ? require("ws") : wrapper_default;
+ var wsServer = import_websocket_server.default;
+ var wsReceiver = import_receiver.default;
+ var wsSender = import_sender.default;

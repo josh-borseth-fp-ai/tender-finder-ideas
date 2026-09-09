@@ -1,6 +1,4 @@
 export { BrowserbaseClient } from "./browserbase.ts"
 export { IntegrationConfig } from "./config.ts"
-export { StagehandOpenError } from "./errors.ts"
-export { OpenRouter } from "./open-router.ts"
-export { StagehandSession } from "./stagehand.ts"
-export type { StagehandSessionHandle } from "./stagehand.ts"
+export { HostedBrowserOpenError } from "./errors.ts"
+export { HostedBrowser } from "./hosted-browser.ts"

@@ -2,6 +2,8 @@ export {
   AccessWall,
   AccessWallKind,
   Crawl,
+  CrawlActivity,
+  CrawlActivityKind,
   CrawlId,
   CrawlNotBlocked,
   CrawlNotFound,

@@ -6,9 +6,10 @@
   "scripts": {
     "prepare": "effect-language-service patch",
     "dev": "bun --filter @tender-finder/web dev",
+    "crawl": "bun --env-file=.env apps/cli/src/main.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b && tsc --noEmit -p apps/web"
+    "typecheck": "tsc -b && tsc --noEmit -p apps/web && tsc --noEmit -p apps/cli"
   },
   "devDependencies": {
     "@effect/language-service": "^0.87.2",
@@ -16,5 +17,8 @@
     "effect-solutions": "latest",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
+  },
+  "patchedDependencies": {
+    "playwright-core@1.63.0": "patches/playwright-core@1.63.0.patch"
   }
 }

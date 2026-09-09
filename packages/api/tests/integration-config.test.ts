@@ -1,16 +1,14 @@
-import { OpenRouter as OpenRouterSdk } from "@openrouter/sdk"
 import { describe, expect, it } from "@effect/vitest"
 import { ConfigProvider, Effect, Layer, Redacted } from "effect"
+import { LanguageModel } from "effect/unstable/ai"
 import { BrowserbaseClient } from "../src/integrations/browserbase.ts"
 import { IntegrationConfig } from "../src/integrations/config.ts"
-import { OpenRouter } from "../src/integrations/open-router.ts"
-import { StagehandSession } from "../src/integrations/stagehand.ts"
+import { HostedBrowser } from "../src/integrations/hosted-browser.ts"
+import { OpenRouterGroundingLanguageModelLive } from "../src/integrations/open-router-language-model.ts"
 
 const integrationsTestLayer = Layer.mergeAll(
-  OpenRouter.layer,
   BrowserbaseClient.layer,
-  StagehandSession.layer.pipe(
-    Layer.provide(OpenRouter.layer),
+  HostedBrowser.layer.pipe(
     Layer.provide(BrowserbaseClient.layer),
   ),
 ).pipe(Layer.provide(IntegrationConfig.testLayer))
@@ -61,15 +59,22 @@ describe("IntegrationConfig", () => {
 })
 
 describe("integration clients", () => {
-  it.effect("constructs OpenRouter, Browserbase, and Stagehand services", () =>
+  it.effect("constructs Browserbase, HostedBrowser, and LanguageModel services", () =>
     Effect.gen(function*() {
-      const openRouter = yield* OpenRouter
       const browserbase = yield* BrowserbaseClient
-      const stagehand = yield* StagehandSession
-      expect(openRouter.client).toBeInstanceOf(OpenRouterSdk)
+      const hosted = yield* HostedBrowser
       expect(browserbase.client).toBeDefined()
       expect(typeof browserbase.liveViewUrl).toBe("function")
       expect(typeof browserbase.release).toBe("function")
-      expect(typeof stagehand.open).toBe("function")
+      expect(typeof hosted.open).toBe("function")
     }).pipe(Effect.provide(integrationsTestLayer)))
+
+  it.effect("constructs LanguageModel from IntegrationConfig", () =>
+    Effect.gen(function*() {
+      const model = yield* LanguageModel.LanguageModel
+      expect(typeof model.generateText).toBe("function")
+    }).pipe(
+      Effect.provide(OpenRouterGroundingLanguageModelLive),
+      Effect.provide(IntegrationConfig.testLayer),
+    ))
 })
