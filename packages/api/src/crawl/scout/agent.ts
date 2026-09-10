@@ -31,9 +31,10 @@ const systemPrompt = [
   "harvestIndex reachedEnd means this index's pages are exhausted, not that the site is done. Do not treat an advertised total as collected.",
   "After harvestIndex, look for another solicitation index on this site that you have not harvested: other navigation, tabs, search, or portals. Use indexUrl to avoid harvesting the same page again.",
   "You may act to change page size or filters, then harvestIndex again, if that would reveal unseen notices on this index.",
+  "Do not finish solely because the public indexes you already harvested ended. Look for a sign-in path to another currently-open listing (Login or Sign in that gates opportunities, not account-only). Open that path and observe. If a login form stands between you and that listing, call requestHuman once, then harvestIndex after they continue. Skip requestHuman if harvest already paused. Do not pause just because a Login link exists.",
   "Call finish only when you cannot find another unharvested solicitation index, harvestIndex returns capped, or you cannot continue.",
   "If harvestIndex remainder is true, read the reason. Do not treat an advertised total as collected.",
-  "If harvestIndex login is true, a person is paused automatically unless they already signed in this crawl. You may harvestIndex again after they continue, or look for another index.",
+  "If harvestIndex login or gatedIndex is true, a person is paused automatically unless they already signed in this crawl. You may harvestIndex again after they continue, or look for another index.",
   "If the page needs a person to sign in before you can reach an index, call requestHuman, then observe again after they continue. Do not call requestHuman for a harvest remainder that already paused.",
 ].join(" ")
 
@@ -56,7 +57,7 @@ const HarvestIndex = Tool.make("harvestIndex", {
     "Record currently open notices from this solicitation index, including later pages.",
     "Call when you can see a listing of open opportunities you have not harvested.",
     "After it returns, look for another solicitation index on this site. reachedEnd is not a reason to finish.",
-    "remainder means this session may not have collected all currently open notices on this index. reason explains why. A person is paused automatically only when login is true and they have not already signed in this crawl.",
+    "remainder means this session may not have collected all currently open notices on this index. reason explains why. A person is paused automatically when login or gatedIndex is true and they have not already signed in this crawl.",
   ].join(" "),
   parameters: Schema.Struct({}),
   success: Schema.Struct({
@@ -69,6 +70,7 @@ const HarvestIndex = Tool.make("harvestIndex", {
     remainder: Schema.optionalKey(Schema.Boolean),
     reason: Schema.optionalKey(Schema.NonEmptyString),
     login: Schema.optionalKey(Schema.Boolean),
+    gatedIndex: Schema.optionalKey(Schema.Boolean),
   }),
   failure: Schema.String,
   failureMode: "return",
@@ -160,12 +162,13 @@ const runAgent = Effect.fn("ScoutAgent.run")(function*(host: ScoutAgentHost) {
           Effect.tap((result) => host.reportDebug({ harvest: result })),
           Effect.flatMap((result) =>
             Effect.gen(function*() {
-              if (result.judgment?.login === true) {
+              const judgment = result.judgment
+              if (judgment !== undefined && (judgment.login === true || judgment.gatedIndex === true)) {
                 const alreadyPaused = yield* Ref.get(pausedForLogin)
                 if (!alreadyPaused) {
-                  yield* report("human", result.judgment.reason)
+                  yield* report("human", judgment.reason)
                   yield* host.waitForHuman(new AccessWall({
-                    reason: result.judgment.reason,
+                    reason: judgment.reason,
                   }))
                   yield* Ref.set(pausedForLogin, true)
                 }
@@ -178,12 +181,15 @@ const runAgent = Effect.fn("ScoutAgent.run")(function*(host: ScoutAgentHost) {
                 capped: result.capped,
                 retries: result.retries,
                 indexUrl,
-                ...(result.judgment !== undefined
+                ...(judgment !== undefined
                   ? {
-                    remainder: result.judgment.remainder,
-                    reason: result.judgment.reason,
-                    ...(result.judgment.login !== undefined
-                      ? { login: result.judgment.login }
+                    remainder: judgment.remainder,
+                    reason: judgment.reason,
+                    ...(judgment.login !== undefined
+                      ? { login: judgment.login }
+                      : {}),
+                    ...(judgment.gatedIndex !== undefined
+                      ? { gatedIndex: judgment.gatedIndex }
                       : {}),
                   }
                   : {}),

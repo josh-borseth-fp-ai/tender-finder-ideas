@@ -65,6 +65,7 @@ const withAgent = (judgment: {
   readonly remainder: boolean
   readonly reason: string
   readonly login?: boolean
+  readonly gatedIndex?: boolean
 } = { remainder: false, reason: "This listing looks collected." }) =>
   HarvestAgent.layer.pipe(
     Layer.provide(
@@ -100,6 +101,7 @@ describe("HarvestAgent", () => {
       expect(result.judgment?.remainder).toBe(false)
       expect(result.judgment?.reason).toBe("This listing looks collected.")
       expect(result.judgment?.login).toBeUndefined()
+      expect(result.judgment?.gatedIndex).toBeUndefined()
       expect(host.solicitations.map((item) => item.title)).toEqual(["Road resurfacing"])
       expect(host.events).toContain("note:Writing a Playwright script for this index.")
       expect(host.events).toContain("note:Harvested 1 from this listing (1 pages).")
@@ -120,6 +122,22 @@ describe("HarvestAgent", () => {
       remainder: true,
       reason: "The public window ended at a login gate.",
       login: true,
+    })))
+  })
+
+  it.effect("attaches gatedIndex from harvest judgment", () => {
+    const host = makeHost()
+    return Effect.gen(function*() {
+      const agent = yield* HarvestAgent
+      const result = yield* agent.run(host)
+      expect(result.judgment?.remainder).toBe(false)
+      expect(result.judgment?.reason).toBe("A members-only index remains behind sign-in.")
+      expect(result.judgment?.gatedIndex).toBe(true)
+      expect(host.events).toContain("note:Harvest judgment: A members-only index remains behind sign-in.")
+    }).pipe(Effect.provide(withAgent({
+      remainder: false,
+      reason: "A members-only index remains behind sign-in.",
+      gatedIndex: true,
     })))
   })
 })

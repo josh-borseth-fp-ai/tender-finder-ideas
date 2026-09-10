@@ -10,6 +10,7 @@ export class HarvestJudgment extends Schema.Class<HarvestJudgment>("HarvestJudgm
   remainder: Schema.Boolean,
   reason: Schema.NonEmptyString,
   login: Schema.optionalKey(Schema.Boolean),
+  gatedIndex: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 const fallbackJudgment = (reason: string) =>
@@ -32,8 +33,9 @@ export const judgeHarvest = Effect.fn("judgeHarvest")(function*(input: {
     prompt: [
       "Judge whether this harvest collected the currently open notices this session can take from this solicitation index.",
       "remainder is true if the index still appears to hold currently open notices this session did not collect.",
-      "reason is your own explanation. Do not assume login. Causes include a complete public window, a site cap, a harvest error, an overlay, login, or unknown.",
+      "reason is your own explanation. Do not assume login. Causes include a complete public window, a site cap, a harvest error, an overlay, login, a gated index, or unknown.",
       "Set login true only when a person signing in in the hosted browser would unlock more currently open notices on this index. Omit login otherwise.",
+      "Set gatedIndex true only when a person signing in would open a different solicitation index of currently open notices this session has not harvested. Locked nav, members-only copy, sign-in to view opportunities, or a listing that redirects to auth is enough. A header Login control by itself is not enough. Omit gatedIndex otherwise.",
       `Recorded: ${input.recorded}`,
       `Pages: ${input.pages}`,
       `reachedEnd: ${input.reachedEnd}`,

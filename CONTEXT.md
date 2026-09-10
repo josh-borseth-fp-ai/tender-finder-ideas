@@ -12,6 +12,10 @@ _Avoid_: portal, target, seed
 The page that enumerates currently open Solicitations.
 _Avoid_: bids page, listing page, portal, RFP list
 
+**Gated index**:
+A solicitation index this session cannot open until a person signs in.
+_Avoid_: private listings, member listing, login-only page
+
 **Crawl**:
 One attempt to collect open solicitations from a single Source URL.
 _Avoid_: job, run, scrape, task

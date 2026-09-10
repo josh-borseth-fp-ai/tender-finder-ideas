@@ -32,6 +32,7 @@ export class HarvestDebug extends Schema.Class<HarvestDebug>("HarvestDebug")({
   remainder: Schema.optionalKey(Schema.Boolean),
   reason: Schema.optionalKey(Schema.NonEmptyString),
   login: Schema.optionalKey(Schema.Boolean),
+  gatedIndex: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 export class HarvestScriptDebug extends Schema.Class<HarvestScriptDebug>("HarvestScriptDebug")({
@@ -85,10 +86,12 @@ export type CrawlDebugPatch = {
     readonly remainder?: boolean
     readonly reason?: string
     readonly login?: boolean
+    readonly gatedIndex?: boolean
     readonly judgment?: {
       readonly remainder: boolean
       readonly reason: string
       readonly login?: boolean
+      readonly gatedIndex?: boolean
     }
   }
   readonly harvestScript?: HarvestScriptDebug | {
@@ -105,10 +108,12 @@ const harvestJudgmentDebug = (harvest: NonNullable<CrawlDebugPatch["harvest"]>) 
   const remainder = harvest.remainder ?? judgment?.remainder
   const reason = harvest.reason ?? judgment?.reason
   const login = harvest.login ?? judgment?.login
+  const gatedIndex = harvest.gatedIndex ?? judgment?.gatedIndex
   return {
     ...(remainder !== undefined ? { remainder } : {}),
     ...(reason !== undefined ? { reason } : {}),
     ...(login !== undefined ? { login } : {}),
+    ...(gatedIndex !== undefined ? { gatedIndex } : {}),
   }
 }
 

@@ -17,8 +17,8 @@ import {
 } from "./script.ts"
 
 export const defaultHarvestLimits = {
-  maxPages: 250,
-  maxItems: 10_000,
+  maxPages: 5_000,
+  maxItems: 50_000,
   maxRepairs: 12,
 }
 

@@ -47,6 +47,7 @@ describe("judgeHarvest", () => {
       expect(judgment.remainder).toBe(true)
       expect(judgment.reason).toBe("The public window ended at a login gate.")
       expect(judgment.login).toBe(true)
+      expect(judgment.gatedIndex).toBeUndefined()
     }).pipe(Effect.provide(withModel({
       remainder: true,
       reason: "The public window ended at a login gate.",
@@ -60,9 +61,24 @@ describe("judgeHarvest", () => {
       expect(judgment.remainder).toBe(true)
       expect(judgment.reason).toBe("The site pager stopped after a thousand notices.")
       expect(judgment.login).toBeUndefined()
+      expect(judgment.gatedIndex).toBeUndefined()
     }).pipe(Effect.provide(withModel({
       remainder: true,
       reason: "The site pager stopped after a thousand notices.",
+    })))
+  })
+
+  it.effect("returns gatedIndex when another index needs sign-in", () => {
+    return Effect.gen(function*() {
+      const judgment = yield* judgeHarvest(input)
+      expect(judgment.remainder).toBe(false)
+      expect(judgment.reason).toBe("A members-only index remains behind sign-in.")
+      expect(judgment.login).toBeUndefined()
+      expect(judgment.gatedIndex).toBe(true)
+    }).pipe(Effect.provide(withModel({
+      remainder: false,
+      reason: "A members-only index remains behind sign-in.",
+      gatedIndex: true,
     })))
   })
 
@@ -72,6 +88,7 @@ describe("judgeHarvest", () => {
       expect(judgment.remainder).toBe(false)
       expect(judgment.reason).toBe("Could not judge this harvest.")
       expect(judgment.login).toBeUndefined()
+      expect(judgment.gatedIndex).toBeUndefined()
     }).pipe(Effect.provide(withModel({ remainder: true })))
   })
 })

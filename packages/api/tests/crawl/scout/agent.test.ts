@@ -356,6 +356,63 @@ describe("ScoutAgent", () => {
     }, wallHarvest)))
   })
 
+  it.effect("pauses for sign-in when harvest judgment sets gatedIndex", () => {
+    let turn = 0
+    const host = makeHost()
+    const gatedHarvest = Layer.succeed(HarvestAgent, {
+      run: (harvestHost) =>
+        Effect.gen(function*() {
+          yield* harvestHost.recordSolicitations([
+            new Solicitation({
+              title: "Road resurfacing",
+              url: "https://example.gov/bids/1",
+            }),
+          ])
+          return {
+            recorded: 1,
+            pages: 1,
+            reachedEnd: true,
+            capped: false,
+            retries: 0,
+            judgment: {
+              remainder: false,
+              reason: "A members-only index remains behind sign-in.",
+              gatedIndex: true,
+            },
+          }
+        }),
+    })
+    return Effect.gen(function*() {
+      const agent = yield* ScoutAgent
+      yield* agent.run(host)
+      expect(host.events).toContain("human:A members-only index remains behind sign-in.")
+      expect(host.events).toContain("wait:A members-only index remains behind sign-in.")
+      expect(host.events).toContain("finish:Collected open notices")
+    }).pipe(Effect.provide(withAgent(() => {
+      turn += 1
+      if (turn === 1) {
+        return [
+          {
+            type: "tool-call",
+            id: "call-harvest",
+            name: "harvestIndex",
+            params: {},
+          },
+          { type: "finish", reason: "tool-calls", usage: emptyUsage },
+        ]
+      }
+      return [
+        {
+          type: "tool-call",
+          id: "call-finish",
+          name: "finish",
+          params: { outcome: "completed", message: "Collected open notices" },
+        },
+        { type: "finish", reason: "tool-calls", usage: emptyUsage },
+      ]
+    }, gatedHarvest)))
+  })
+
   it.effect("keeps a remainder reason without pausing when login is not needed", () => {
     let turn = 0
     const host = makeHost()
