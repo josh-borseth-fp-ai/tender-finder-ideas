@@ -61,23 +61,28 @@ const makeHost = (session: HarvestSession = makeSession()): HarvestAgentHost & {
   }
 }
 
-const withAgent = () =>
+const withAgent = (judgment: {
+  readonly remainder: boolean
+  readonly reason: string
+  readonly login?: boolean
+} = { remainder: false, reason: "This listing looks collected." }) =>
   HarvestAgent.layer.pipe(
     Layer.provide(
       Layer.effect(
         LanguageModel.LanguageModel,
         LanguageModel.make({
-          generateText: () =>
-            Effect.succeed([
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  extractSource: "extract",
-                  paginateSource: "paginate",
-                }),
-              },
+          generateText: (options) => {
+            const name = options.responseFormat.type === "json"
+              ? options.responseFormat.objectName
+              : undefined
+            const value = name === "harvest_judgment"
+              ? judgment
+              : { extractSource: "extract", paginateSource: "paginate" }
+            return Effect.succeed([
+              { type: "text" as const, text: JSON.stringify(value) },
               { type: "finish" as const, reason: "stop" as const, usage: emptyUsage },
-            ]),
+            ])
+          },
           streamText: () => Stream.empty,
         }),
       ),
@@ -92,9 +97,29 @@ describe("HarvestAgent", () => {
       const result = yield* agent.run(host)
       expect(result.recorded).toBe(1)
       expect(result.reachedEnd).toBe(true)
+      expect(result.judgment?.remainder).toBe(false)
+      expect(result.judgment?.reason).toBe("This listing looks collected.")
+      expect(result.judgment?.login).toBeUndefined()
       expect(host.solicitations.map((item) => item.title)).toEqual(["Road resurfacing"])
       expect(host.events).toContain("note:Writing a Playwright script for this index.")
       expect(host.events).toContain("note:Harvested 1 from this listing (1 pages).")
+      expect(host.events).toContain("note:Harvest judgment: This listing looks collected.")
     }).pipe(Effect.provide(withAgent()))
+  })
+
+  it.effect("attaches login from harvest judgment", () => {
+    const host = makeHost()
+    return Effect.gen(function*() {
+      const agent = yield* HarvestAgent
+      const result = yield* agent.run(host)
+      expect(result.judgment?.remainder).toBe(true)
+      expect(result.judgment?.reason).toBe("The public window ended at a login gate.")
+      expect(result.judgment?.login).toBe(true)
+      expect(host.events).toContain("note:Harvest judgment: The public window ended at a login gate.")
+    }).pipe(Effect.provide(withAgent({
+      remainder: true,
+      reason: "The public window ended at a login gate.",
+      login: true,
+    })))
   })
 })

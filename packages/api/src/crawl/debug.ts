@@ -29,6 +29,9 @@ export class HarvestDebug extends Schema.Class<HarvestDebug>("HarvestDebug")({
   reachedEnd: Schema.Boolean,
   capped: Schema.Boolean,
   retries: Schema.Number,
+  remainder: Schema.optionalKey(Schema.Boolean),
+  reason: Schema.optionalKey(Schema.NonEmptyString),
+  login: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 export class HarvestScriptDebug extends Schema.Class<HarvestScriptDebug>("HarvestScriptDebug")({
@@ -79,6 +82,14 @@ export type CrawlDebugPatch = {
     readonly reachedEnd: boolean
     readonly capped: boolean
     readonly retries: number
+    readonly remainder?: boolean
+    readonly reason?: string
+    readonly login?: boolean
+    readonly judgment?: {
+      readonly remainder: boolean
+      readonly reason: string
+      readonly login?: boolean
+    }
   }
   readonly harvestScript?: HarvestScriptDebug | {
     readonly extractSource: string
@@ -87,6 +98,18 @@ export type CrawlDebugPatch = {
   readonly lastScriptError?: string
   readonly indexSample?: IndexSampleDebug
   readonly toolFailures?: ReadonlyArray<ToolFailureDebug>
+}
+
+const harvestJudgmentDebug = (harvest: NonNullable<CrawlDebugPatch["harvest"]>) => {
+  const judgment = "judgment" in harvest ? harvest.judgment : undefined
+  const remainder = harvest.remainder ?? judgment?.remainder
+  const reason = harvest.reason ?? judgment?.reason
+  const login = harvest.login ?? judgment?.login
+  return {
+    ...(remainder !== undefined ? { remainder } : {}),
+    ...(reason !== undefined ? { reason } : {}),
+    ...(login !== undefined ? { login } : {}),
+  }
 }
 
 const optional = <T>(current: T | undefined, next: T | undefined) =>
@@ -104,6 +127,7 @@ export const mergeCrawlDebug = (current: CrawlDebug, patch: CrawlDebugPatch) => 
       reachedEnd: patch.harvest.reachedEnd,
       capped: patch.harvest.capped,
       retries: patch.harvest.retries,
+      ...harvestJudgmentDebug(patch.harvest),
     })
   const keepHarvest = harvestPatch !== undefined
     && current.harvest !== undefined

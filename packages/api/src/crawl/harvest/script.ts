@@ -188,7 +188,7 @@ const scriptShape = [
   "Keep the functions short. Prefer page.evaluate for extract and a few locators plus click for paginate.",
   "extractSource: async (page) => ({ solicitations, hasNext }). solicitations is an array of { title, url?, agency?, dueDate?, solicitationNumber?, summary?, description? }.",
   "Declare every identifier you return. If you collect rows as out inside page.evaluate, return that array as solicitations from the outer function.",
-  "Use exact titles and URLs from the page. Do not invent notices. Skip closed, awarded, archived, cancelled, or expired notices with string includes, not regex.",
+  "Use exact titles and URLs from the page. Do not invent notices. Collect every listing on this result set. Do not skip a row because its title or cells contain status words.",
   "hasNext is true only when another page of the current result set remains (Next, More, or a later page control).",
   "Do not set hasNext for a larger advertised total, a page-size dropdown, or unused filters.",
   "paginateSource: async (page) => ({ moved }). Advance the current query (next page).",
@@ -198,6 +198,13 @@ const scriptShape = [
   "Do not use waitForTimeout or unquoted :has-text(Next).",
   "Use Playwright locators (page.locator, page.getByRole, page.evaluate). Dismiss cookies or overlays in the script if they block the list.",
 ].join(" ")
+
+export const harvestScriptInstructions = [
+  "Write extractSource and paginateSource, Playwright functions that collect the notices listed on this index.",
+  "Walk the current result set. Advertised totals and page-number labels can disagree with what the table can show; do not target a count in code.",
+  "The snapshot is a compact sample. Collect every matching notice on the page, not only the sampled rows.",
+  scriptShape,
+].join("\n")
 
 export class HarvestScriptError extends Schema.TaggedError<HarvestScriptError>()("HarvestScriptError", {
   message: Schema.String,
@@ -246,10 +253,7 @@ export const writeHarvestScript = Effect.fn("writeHarvestScript")(function*(
 ) {
   return yield* generateHarvestScript(
     [
-      "Write extractSource and paginateSource, Playwright functions that collect currently open solicitations, RFPs, tenders, or bids from this page.",
-      "Walk the current result set. Advertised totals and page-number labels can disagree with what the table can show; do not target a count in code.",
-      "The snapshot is a compact sample. Collect every matching notice on the page, not only the sampled rows.",
-      scriptShape,
+      harvestScriptInstructions,
       contextBlock(input),
     ].join("\n"),
     "Timed out writing a Playwright harvest script.",

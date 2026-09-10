@@ -1,6 +1,5 @@
 import {
   AccessWall,
-  AccessWallKind,
   CrawlActivity,
   type Solicitation,
   SourceUrl,
@@ -33,8 +32,9 @@ const systemPrompt = [
   "After harvestIndex, look for another solicitation index on this site that you have not harvested: other navigation, tabs, search, or portals. Use indexUrl to avoid harvesting the same page again.",
   "You may act to change page size or filters, then harvestIndex again, if that would reveal unseen notices on this index.",
   "Call finish only when you cannot find another unharvested solicitation index, harvestIndex returns capped, or you cannot continue.",
-  "When finishing, report recorded notices. Do not claim the site's advertised result count was collected when recorded is much smaller.",
-  "If the site needs a person (login, SSO, captcha, access denied), call requestHuman, then observe again after they continue.",
+  "If harvestIndex remainder is true, read the reason. Do not treat an advertised total as collected.",
+  "If harvestIndex login is true, a person is paused automatically unless they already signed in this crawl. You may harvestIndex again after they continue, or look for another index.",
+  "If the page needs a person to sign in before you can reach an index, call requestHuman, then observe again after they continue. Do not call requestHuman for a harvest remainder that already paused.",
 ].join(" ")
 
 const Goto = Tool.make("goto", {
@@ -56,6 +56,7 @@ const HarvestIndex = Tool.make("harvestIndex", {
     "Record currently open notices from this solicitation index, including later pages.",
     "Call when you can see a listing of open opportunities you have not harvested.",
     "After it returns, look for another solicitation index on this site. reachedEnd is not a reason to finish.",
+    "remainder means this session may not have collected all currently open notices on this index. reason explains why. A person is paused automatically only when login is true and they have not already signed in this crawl.",
   ].join(" "),
   parameters: Schema.Struct({}),
   success: Schema.Struct({
@@ -65,15 +66,17 @@ const HarvestIndex = Tool.make("harvestIndex", {
     capped: Schema.Boolean,
     retries: Schema.Number,
     indexUrl: Schema.String,
+    remainder: Schema.optionalKey(Schema.Boolean),
+    reason: Schema.optionalKey(Schema.NonEmptyString),
+    login: Schema.optionalKey(Schema.Boolean),
   }),
   failure: Schema.String,
   failureMode: "return",
 })
 
 const RequestHuman = Tool.make("requestHuman", {
-  description: "Pause for a person to sign in or clear an access wall in the hosted browser.",
+  description: "Pause for a person to sign in in the hosted browser.",
   parameters: Schema.Struct({
-    kind: AccessWallKind,
     reason: Schema.NonEmptyString,
   }),
   success: Schema.Struct({ resumed: Schema.Boolean }),
@@ -111,6 +114,7 @@ const decodeSourceUrl = (url: string) =>
 const runAgent = Effect.fn("ScoutAgent.run")(function*(host: ScoutAgentHost) {
   const harvest = yield* HarvestAgent
   const seen = new Set<string>()
+  const pausedForLogin = yield* Ref.make(false)
   const outcome = yield* Ref.make<Outcome | undefined>(undefined)
   const chat = yield* Chat.empty
   const report = makeReport(host, "scout")
@@ -155,17 +159,45 @@ const runAgent = Effect.fn("ScoutAgent.run")(function*(host: ScoutAgentHost) {
           Effect.flatMap(() => harvest.run(host, seen)),
           Effect.tap((result) => host.reportDebug({ harvest: result })),
           Effect.flatMap((result) =>
-            host.session.currentUrl().pipe(
-              Effect.map((indexUrl) => ({ ...result, indexUrl })),
-            ),
+            Effect.gen(function*() {
+              if (result.judgment?.login === true) {
+                const alreadyPaused = yield* Ref.get(pausedForLogin)
+                if (!alreadyPaused) {
+                  yield* report("human", result.judgment.reason)
+                  yield* host.waitForHuman(new AccessWall({
+                    reason: result.judgment.reason,
+                  }))
+                  yield* Ref.set(pausedForLogin, true)
+                }
+              }
+              const indexUrl = yield* host.session.currentUrl()
+              return {
+                recorded: result.recorded,
+                pages: result.pages,
+                reachedEnd: result.reachedEnd,
+                capped: result.capped,
+                retries: result.retries,
+                indexUrl,
+                ...(result.judgment !== undefined
+                  ? {
+                    remainder: result.judgment.remainder,
+                    reason: result.judgment.reason,
+                    ...(result.judgment.login !== undefined
+                      ? { login: result.judgment.login }
+                      : {}),
+                  }
+                  : {}),
+              }
+            })
           ),
           Effect.catchTag("CrawlSessionError", (error) => failTool("harvestIndex", error.message)),
         ),
       requestHuman: (params) =>
         report("human", params.reason).pipe(
           Effect.flatMap(() =>
-            host.waitForHuman(new AccessWall({ kind: params.kind, reason: params.reason })),
+            host.waitForHuman(new AccessWall({ reason: params.reason })),
           ),
+          Effect.tap(() => Ref.set(pausedForLogin, true)),
           Effect.as({ resumed: true }),
         ),
       finish: (params) =>

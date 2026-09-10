@@ -21,8 +21,8 @@ An open government contract opportunity listed on a Solicitation index.
 _Avoid_: RFP, tender, bid, listing, opportunity
 
 **Access wall**:
-A login, captcha, or other human gate that stops a Crawl until a person acts in the hosted browser.
-_Avoid_: block, challenge, auth, captcha (as the general term)
+A login gate that stops a Crawl until a person signs in in the hosted browser. A harvest remainder is not automatically an access wall.
+_Avoid_: block, challenge, auth, captcha, access denied
 
 **Live view**:
 The Browserbase window for the hosted browser of a Crawl. A person watches it while the crawl collects notices, and takes it over only when an access wall blocks the crawl. It closes when the hosted session ends.

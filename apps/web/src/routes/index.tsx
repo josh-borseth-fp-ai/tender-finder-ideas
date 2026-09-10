@@ -460,14 +460,7 @@ function statusDetail(crawl: Crawl) {
 }
 
 function wallCopy(wall: AccessWall) {
-  switch (wall.kind) {
-    case "login":
-      return wall.reason || "This site needs you to sign in."
-    case "captcha":
-      return wall.reason || "This site is asking for a captcha."
-    case "accessDenied":
-      return wall.reason || "This site denied access."
-  }
+  return wall.reason
 }
 
 function activityStamp(kind: CrawlActivity["kind"]) {

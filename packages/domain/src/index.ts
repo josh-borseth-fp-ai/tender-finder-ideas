@@ -1,6 +1,5 @@
 export {
   AccessWall,
-  AccessWallKind,
   Crawl,
   CrawlActivity,
   CrawlActivityKind,

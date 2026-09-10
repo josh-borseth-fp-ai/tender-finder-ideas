@@ -125,7 +125,6 @@ describe("runDebugCrawl", () => {
       const { report } = yield* run({
         run: (host) =>
           host.waitForHuman(new AccessWall({
-            kind: "login",
             reason: "Sign in required",
           })),
       })
@@ -186,7 +185,6 @@ describe("runDebugCrawl", () => {
         run: (host) =>
           Effect.gen(function*() {
             yield* host.waitForHuman(new AccessWall({
-              kind: "login",
               reason: "Sign in required",
             }))
             yield* host.recordSolicitations([openNotice])

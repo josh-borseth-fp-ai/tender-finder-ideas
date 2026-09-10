@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import {
   compactHarvestSnapshot,
+  harvestScriptInstructions,
   summarizeHarvestCaptures,
 } from "../../../src/crawl/harvest/script.ts"
 
@@ -81,5 +82,13 @@ describe("summarizeHarvestCaptures", () => {
     expect(summary).toContain("\"omitted\":2")
     expect(summary).toContain("https://example.gov/api/0")
     expect(summary).not.toContain("https://example.gov/api/5")
+  })
+})
+
+describe("harvestScriptInstructions", () => {
+  it("does not tell the model to skip closed or awarded notices with includes", () => {
+    expect(harvestScriptInstructions).toContain("Collect every listing on this result set")
+    expect(harvestScriptInstructions).not.toMatch(/Skip closed/i)
+    expect(harvestScriptInstructions).not.toMatch(/string includes/i)
   })
 })

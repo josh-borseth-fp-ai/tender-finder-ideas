@@ -60,7 +60,7 @@ const makeHost = (): ScoutAgentHost & {
     sourceUrl,
     waitForHuman: (wall: AccessWall) =>
       Effect.sync(() => {
-        events.push(`human:${wall.kind}`)
+        events.push(`wait:${wall.reason}`)
       }),
     recordSolicitations: (items) =>
       Effect.sync(() => {
@@ -297,5 +297,176 @@ describe("ScoutAgent", () => {
         { type: "finish", reason: "tool-calls", usage: emptyUsage },
       ]
     })))
+  })
+
+  it.effect("pauses for sign-in when harvest judgment sets login", () => {
+    let turn = 0
+    const host = makeHost()
+    const wallHarvest = Layer.succeed(HarvestAgent, {
+      run: (harvestHost) =>
+        Effect.gen(function*() {
+          yield* harvestHost.recordSolicitations([
+            new Solicitation({
+              title: "Road resurfacing",
+              url: "https://example.gov/bids/1",
+            }),
+          ])
+          return {
+            recorded: 1,
+            pages: 1,
+            reachedEnd: true,
+            capped: false,
+            retries: 0,
+            judgment: {
+              remainder: true,
+              reason: "Sign in to see the rest of this index.",
+              login: true,
+            },
+          }
+        }),
+    })
+    return Effect.gen(function*() {
+      const agent = yield* ScoutAgent
+      yield* agent.run(host)
+      expect(host.events).toContain("human:Sign in to see the rest of this index.")
+      expect(host.events).toContain("wait:Sign in to see the rest of this index.")
+      expect(host.events).toContain("finish:Collected open notices")
+    }).pipe(Effect.provide(withAgent(() => {
+      turn += 1
+      if (turn === 1) {
+        return [
+          {
+            type: "tool-call",
+            id: "call-harvest",
+            name: "harvestIndex",
+            params: {},
+          },
+          { type: "finish", reason: "tool-calls", usage: emptyUsage },
+        ]
+      }
+      return [
+        {
+          type: "tool-call",
+          id: "call-finish",
+          name: "finish",
+          params: { outcome: "completed", message: "Collected open notices" },
+        },
+        { type: "finish", reason: "tool-calls", usage: emptyUsage },
+      ]
+    }, wallHarvest)))
+  })
+
+  it.effect("keeps a remainder reason without pausing when login is not needed", () => {
+    let turn = 0
+    const host = makeHost()
+    const remainderHarvest = Layer.succeed(HarvestAgent, {
+      run: () =>
+        Effect.succeed({
+          recorded: 25,
+          pages: 40,
+          reachedEnd: true,
+          capped: false,
+          retries: 0,
+          judgment: {
+            remainder: true,
+            reason: "The site pager stopped after a thousand notices.",
+          },
+        }),
+    })
+    return Effect.gen(function*() {
+      const agent = yield* ScoutAgent
+      yield* agent.run(host)
+      expect(host.events.filter((event) => event.startsWith("human:"))).toEqual([])
+      expect(host.events.filter((event) => event.startsWith("wait:"))).toEqual([])
+      expect(host.events).toContain("finish:The site pager stopped after a thousand notices.")
+    }).pipe(Effect.provide(withAgent(() => {
+      turn += 1
+      if (turn === 1) {
+        return [
+          {
+            type: "tool-call",
+            id: "call-harvest",
+            name: "harvestIndex",
+            params: {},
+          },
+          { type: "finish", reason: "tool-calls", usage: emptyUsage },
+        ]
+      }
+      return [
+        {
+          type: "tool-call",
+          id: "call-finish",
+          name: "finish",
+          params: {
+            outcome: "completed",
+            message: "The site pager stopped after a thousand notices.",
+          },
+        },
+        { type: "finish", reason: "tool-calls", usage: emptyUsage },
+      ]
+    }, remainderHarvest)))
+  })
+
+  it.effect("does not pause again when harvest login follows an earlier sign-in", () => {
+    let turn = 0
+    const host = makeHost()
+    const loginHarvest = Layer.succeed(HarvestAgent, {
+      run: () =>
+        Effect.succeed({
+          recorded: 1,
+          pages: 1,
+          reachedEnd: true,
+          capped: false,
+          retries: 0,
+          judgment: {
+            remainder: true,
+            reason: "Sign in to see the rest of this index.",
+            login: true,
+          },
+        }),
+    })
+    return Effect.gen(function*() {
+      const agent = yield* ScoutAgent
+      yield* agent.run(host)
+      expect(host.events.filter((event) => event.startsWith("wait:"))).toEqual([
+        "wait:Sign in on the landing page.",
+      ])
+      expect(host.events).toContain("human:Sign in on the landing page.")
+      expect(host.events).toContain("note:Collecting notices from this index.")
+      expect(host.events).toContain("finish:Collected open notices")
+    }).pipe(Effect.provide(withAgent(() => {
+      turn += 1
+      if (turn === 1) {
+        return [
+          {
+            type: "tool-call",
+            id: "call-human",
+            name: "requestHuman",
+            params: { reason: "Sign in on the landing page." },
+          },
+          { type: "finish", reason: "tool-calls", usage: emptyUsage },
+        ]
+      }
+      if (turn === 2) {
+        return [
+          {
+            type: "tool-call",
+            id: "call-harvest",
+            name: "harvestIndex",
+            params: {},
+          },
+          { type: "finish", reason: "tool-calls", usage: emptyUsage },
+        ]
+      }
+      return [
+        {
+          type: "tool-call",
+          id: "call-finish",
+          name: "finish",
+          params: { outcome: "completed", message: "Collected open notices" },
+        },
+        { type: "finish", reason: "tool-calls", usage: emptyUsage },
+      ]
+    }, loginHarvest)))
   })
 })

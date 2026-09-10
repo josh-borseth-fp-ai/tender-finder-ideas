@@ -72,7 +72,7 @@ describe("Crawls", () => {
       const blocked = started.status === "blocked"
         ? started
         : yield* waitForStatus(started.id, "blocked")
-      expect(blocked.accessWall?.kind).toBe("login")
+      expect(blocked.accessWall?.reason).toBe("Sign in required")
       expect(blocked.activity.map((entry) => `${entry.kind}:${entry.message}`)).toEqual([
         "note:Opening the hosted browser.",
         "goto:Opening https://example.gov/bids",
@@ -104,7 +104,6 @@ describe("Crawls", () => {
               message: "Sign in required",
             }))
             yield* host.waitForHuman(new AccessWall({
-              kind: "login",
               reason: "Sign in required",
             }))
             yield* host.reportActivity(new CrawlActivity({
@@ -191,12 +190,11 @@ describe("Crawls", () => {
       const started = yield* crawls.start("https://example.gov/bids")
       const idle = yield* crawls.awaitIdle(started.id)
       expect(idle.status).toBe("blocked")
-      expect(idle.accessWall?.kind).toBe("login")
+      expect(idle.accessWall?.reason).toBe("Sign in required")
     }).pipe(Effect.provide(Crawls.testLayer({
       run: (host) =>
         Effect.gen(function*() {
           yield* host.waitForHuman(new AccessWall({
-            kind: "login",
             reason: "Sign in required",
           }))
           yield* host.complete()
@@ -245,7 +243,6 @@ describe("Crawls", () => {
     }).pipe(Effect.provide(Crawls.testLayer({
       run: (host) =>
         host.waitForHuman(new AccessWall({
-          kind: "login",
           reason: "Sign in required",
         })),
     }, {

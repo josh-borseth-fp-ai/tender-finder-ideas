@@ -17,12 +17,8 @@ export const CrawlStatus = Schema.Literals([
 ])
 export type CrawlStatus = typeof CrawlStatus.Type
 
-export const AccessWallKind = Schema.Literals(["login", "captcha", "accessDenied"])
-export type AccessWallKind = typeof AccessWallKind.Type
-
 export class AccessWall extends Schema.Class<AccessWall>("AccessWall")({
-  kind: AccessWallKind,
-  reason: Schema.String,
+  reason: Schema.NonEmptyString,
 }) {}
 
 export class Solicitation extends Schema.Class<Solicitation>("Solicitation")({
